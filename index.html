@@ -2653,7 +2653,7 @@ function informeHTML(){
 }
 function fichaHTML(){
  const C=S.cuenta,r=C.solicitud,A=avisosSalud(),V=Object.entries(C.valor).sort((a,b)=>b[1].fecha.localeCompare(a[1].fecha));
- C.regRevisado=C.registros.length;C.regEmbRev=C.regEmb.length;guardarCuenta();
+ if(SB&&C.sbPersonal&&C.registros.length>(C.regRevisado||0)) nubeRevisado(C.sbPersonal);C.regRevisado=C.registros.length;C.regEmbRev=C.regEmb.length;guardarCuenta();
  return `<section class="sec ficha" id="ficha"><div class="acc-head"><div><p class="eyebrow">Ficha</p><h2 class="sec-t nombre-propio">${esc(nombreLocal())}</h2><p class="sec-sub">${esc((C.auth&&C.auth.email)||'')}${C.alta?` · cliente desde el ${fechaLarga(C.alta)}`:''}</p></div><button class="btn ghost sm" data-pc="${C.id}">Abrir chat</button></div>
   <div class="chips">${planLocal().map(p=>`<span class="chip">${esc(p)}</span>`).join('')||'<span class="chip">Sin plan</span>'}<span class="estado ${estadoLocal()==='activo'?'ok':''}">${ETQ_ESTADO[estadoLocal()]}</span></div>
   ${datosLocalHTML()}
@@ -3754,9 +3754,25 @@ async function nubeSync(forzar){
    if(C.solProg&&!C.solProg.sb){const {data,error}=await SB.from('contratacion').insert({id_usuario:uid,tipo:'programa',estado:'solicitada',...idsPrograma(C.solProg.id,C.solProg.sub)}).select('id_contratacion').single();
     if(!error&&data){C.solProg.sb=data.id_contratacion;if(C.solProg.resp) await SB.from('cuestionario').insert({id_usuario:uid,id_contratacion:data.id_contratacion,tipo:C.solProg.origen||'programa',momento:'inicio',respuestas:C.solProg.resp});guardarCuenta();}}
    if(C.entrenador&&C.estado==='pendiente'&&!C.sbPersonal&&C.solicitud){const {data,error}=await SB.from('contratacion').insert({id_usuario:uid,tipo:'personal',estado:'solicitada',id_modalidad_personal:C.solicitud.modalidad||'online'}).select('id_contratacion').single();
-    if(!error&&data){C.sbPersonal=data.id_contratacion;await SB.from('cuestionario').insert({id_usuario:uid,id_contratacion:data.id_contratacion,tipo:'personal',momento:'inicio',respuestas:C.solicitud});guardarCuenta();}}}
+    if(!error&&data){C.sbPersonal=data.id_contratacion;await SB.from('cuestionario').insert({id_usuario:uid,id_contratacion:data.id_contratacion,tipo:'personal',momento:'inicio',respuestas:C.solicitud});guardarCuenta();}}
+   // Sesiones hechas (con RPE y valoración), pesos de cada serie y registros semanales
+   const pc=C.prog&&C.prog.sb;
+   if(pc){C.sbSes=C.sbSes||{};
+    for(const [k,v] of Object.entries(C.hechas||{})){if(!v||!/^\d+-\d+$/.test(k)) continue;const [w,n]=k.split('-').map(Number),r=(C.rpe||{})[k],val=(C.valor||{})[k];
+     const fila={id_contratacion:pc,semana:w,num_sesion:n,fecha:String((C.hechasFecha||{})[k]||(r&&r.fecha)||hoyISO()).slice(0,10),version:v==='exp'?'expres':'completa',rpe:r?Math.round(+r.rpe):null,valoracion:val&&val.estrellas?+val.estrellas:null,comentario:(val&&val.com)||null},h=JSON.stringify(fila);
+     if(!C.sbSes[k]){const {data,error}=await SB.from('sesion_realizada').upsert(fila,{onConflict:'id_contratacion,semana,num_sesion'}).select('id_sesion_realizada').single();if(!error&&data){C.sbSes[k]={id:data.id_sesion_realizada,h};guardarCuenta();}}
+     else if(C.sbSes[k].h!==h){const {error}=await SB.from('sesion_realizada').update(fila).eq('id_sesion_realizada',C.sbSes[k].id);if(!error){C.sbSes[k].h=h;guardarCuenta();}}}
+    for(const [k,o] of Object.entries(C.sbSes)) if(!(C.hechas||{})[k]){const {error}=await SB.from('sesion_realizada').delete().eq('id_sesion_realizada',o.id);if(!error){delete C.sbSes[k];(C.cargas||[]).forEach(x=>{if(x.ses===k) delete x.sb;});guardarCuenta();}}
+    for(const x of (C.cargas||[])){if(x.sb) continue;const ss=C.sbSes[x.ses];if(!ss) continue;
+     const num=v=>v===''||v==null||isNaN(+v)?null:+v;
+     const {data,error}=await SB.from('registro_carga').insert({id_sesion_realizada:ss.id,ejercicio_nombre:x.nombre||String(x.ej||'').replace(/^n:/,'')||'Ejercicio',serie:Math.max(1,+x.serie||1),peso_kg:num(x.peso),repeticiones:num(x.reps)==null?null:Math.round(num(x.reps)),esfuerzo:{facil:'facil',justo:'justo',duro:'muy duro'}[x.esf]||null}).select('id_registro_carga').single();
+     if(!error&&data){x.sb=data.id_registro_carga;guardarCuenta();}}}
+   if(C.sbPersonal){for(const r of (C.registros||[])){if(r.sb) continue;
+     const {data,error}=await SB.from('registro_semanal').insert({id_contratacion:C.sbPersonal,semana:+r.semana||1,fecha:r.fecha,sensacion:r.sens?+r.sens:null,rpe:r.rpe!=null&&r.rpe!==''?Math.round(+r.rpe):null,molestia:r.mol==='si',molestia_detalle:r.molTxt||null,comentario:r.com||null}).select('id_registro_semanal').single();
+     if(!error&&data){r.sb=data.id_registro_semanal;guardarCuenta();}}}
+  }
   // 2) Leer (cada uno ve lo que le permite la seguridad de Supabase: el cliente lo suyo, la entrenadora todo)
-  const [U,K,Q,SP]=await Promise.all([SB.from('usuario').select('*'),SB.from('contratacion').select('*').order('id_contratacion'),SB.from('cuestionario').select('*'),SB.from('subplan').select('id_subplan,id_programa')]);
+  const [U,K,Q,SP,SR,RC,RS]=await Promise.all([SB.from('usuario').select('*'),SB.from('contratacion').select('*').order('id_contratacion'),SB.from('cuestionario').select('*'),SB.from('subplan').select('id_subplan,id_programa'),SB.from('sesion_realizada').select('*'),SB.from('registro_carga').select('*'),SB.from('registro_semanal').select('*')]);
   if(U.error||K.error) throw (U.error||K.error);
   const subs={};(SP.data||[]).forEach(x=>subs[x.id_subplan]=x);
   const resp={};(Q.data||[]).forEach(q=>{if(q.id_contratacion) resp[q.id_contratacion]=q;});
@@ -3774,12 +3790,30 @@ async function nubeSync(forzar){
      const est=k.estado==='activa'?'activo':k.estado==='solicitada'?'pendiente':k.estado;if(c.estado!==est){c.estado=est;cambio=true;}
      if(k.plan_personal&&c.plan!==k.plan_personal){c.plan=k.plan_personal;c.planEnviado=c.planEnviado||new Date().toISOString();cambio=true;}}
    });
+   // Reconstruir el seguimiento desde Supabase (siempre en el panel; en el cliente, solo si este dispositivo no lo tiene)
+   if(c.prog&&c.prog.sb&&(S.sesion==='admin'||!c.sbSes||!Object.keys(c.sbSes).length)){
+    const ses=(SR.data||[]).filter(r=>r.id_contratacion===c.prog.sb&&r.semana&&r.num_sesion);
+    if(ses.length||S.sesion==='admin'){
+     const H={},HF={},RP={},VA={},SS={},CA=[];
+     ses.forEach(r=>{const k=`${r.semana}-${r.num_sesion}`;H[k]=r.version==='expres'?'exp':true;HF[k]=r.fecha;if(r.rpe!=null) RP[k]={rpe:r.rpe,fecha:r.fecha+'T12:00:00.000Z',exp:r.version==='expres'};
+      if(r.valoracion) VA[k]={estrellas:r.valoracion,com:r.comentario||'',fecha:r.fecha+'T12:00:00.000Z',titulo:tituloClave(k)};SS[k]={id:r.id_sesion_realizada,h:''};
+      (RC.data||[]).filter(x=>x.id_sesion_realizada===r.id_sesion_realizada).sort((a,b)=>a.serie-b.serie).forEach(x=>CA.push({ej:'n:'+String(x.ejercicio_nombre||'').toLowerCase(),nombre:x.ejercicio_nombre||'',serie:x.serie,peso:x.peso_kg==null?'':+x.peso_kg,reps:x.repeticiones==null?'':x.repeticiones,esf:{facil:'facil',justo:'justo','muy duro':'duro'}[x.esfuerzo]||'',run:r.id_sesion_realizada,fecha:r.fecha+'T12:00:00.000Z',ses:k,sb:x.id_registro_carga}));});
+     const ant=JSON.stringify([c.hechas,c.rpe,c.valor,c.cargas]);
+     Object.assign(c,{hechas:H,hechasFecha:HF,rpe:RP,valor:{...Object.fromEntries(Object.entries(c.valor||{}).filter(([k])=>!/^\d+-\d+$/.test(k))),...VA},cargas:CA,sbSes:Object.fromEntries(Object.entries(SS).map(([k,o])=>[k,{id:o.id,h:''}]))});
+     const ult=Object.values(HF).sort().pop();if(ult) c.ultimo=ult;
+     if(JSON.stringify([c.hechas,c.rpe,c.valor,c.cargas])!==ant) cambio=true;}}
+   if(c.sbPersonal&&(S.sesion==='admin'||!(c.registros||[]).some(r=>r.sb))){
+    const R=(RS.data||[]).filter(r=>r.id_contratacion===c.sbPersonal).sort((a,b)=>a.semana-b.semana||a.fecha.localeCompare(b.fecha));
+    if(R.length||S.sesion==='admin'){const nuevo=R.map(r=>({semana:r.semana,sens:r.sensacion,rpe:r.rpe,mol:r.molestia?'si':'no',molTxt:r.molestia_detalle||'',com:r.comentario||'',fecha:r.fecha,sb:r.id_registro_semanal}));
+     const rev=R.filter(r=>r.revisado).length;
+     if(JSON.stringify(nuevo)!==JSON.stringify(c.registros||[])||(S.sesion==='admin'&&c.regRevisado!==rev)){c.registros=nuevo;if(S.sesion==='admin') c.regRevisado=rev;cambio=true;}}}
    if(cambio) conCuenta(c,guardarCuenta);
   });
  }catch(e){console.warn('Supabase:',e&&e.message||e);}
  NUBE_EN=false;
  if(cambio&&['panel','cuenta'].includes(S.pantalla)){const y=window.scrollY;render();window.scrollTo(0,y);}
 }
+async function nubeRevisado(id){try{await SB.from('registro_semanal').update({revisado:true}).eq('id_contratacion',id).eq('revisado',false);}catch(e){}}
 async function nubeActualizar(id,cambios){if(!SB||!id) return;try{const {error}=await SB.from('contratacion').update(cambios).eq('id_contratacion',id);if(error) console.warn('Supabase:',error.message);}catch(e){}}
 function ponerSesion(v){S.sesion=v;try{v?localStorage.setItem('cv-sesion',v):localStorage.removeItem('cv-sesion');}catch(e){}}
 function cerrarSesion(){if(SB) SB.auth.signOut().catch(()=>{});S.loginAviso='';if(S.sesion==='cliente'||S.cuenta.auth) usarCuenta(cuentaAnon());S.resp=respNuevo();S.r=S.resp.general;S.player=null;S.ctab='entreno';S.panelSel=null;S.solSel=null;ponerSesion(null);S.loginTab='entrar';S.pcSel=null;S.pcNuevo=false;S.pcBuscar='';S.chatOpen=false;ir('inicio');}
