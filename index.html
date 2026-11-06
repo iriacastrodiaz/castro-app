@@ -1581,11 +1581,12 @@ function activarPrograma(id,sub){
  const pr=todosProgramas().find(x=>x.id===id);
  if(pr&&pr.clases){if(!S.cuenta.packs.includes(id)){S.cuenta.packs.push(id);registrarCompra(`Entrena conmigo · ${pr.nombre}`,'Entrena conmigo',pr.precio);}guardarCuenta();ir('cuenta');return;}
  const origen=S.pantalla&&S.pantalla.startsWith('res')&&S.pantalla!=='resultado'&&S.pantalla!=='resPersonal'?S.q:null;
- S.cuenta.solProg={id,sub:sub||null,fecha:new Date().toISOString(),origen,resp:origen?JSON.parse(JSON.stringify(S.resp[origen]||{})):null};guardarCuenta();ir('cuenta');}
+ S.cuenta.solProg={id,sub:sub||null,fecha:new Date().toISOString(),origen,resp:origen?JSON.parse(JSON.stringify(S.resp[origen]||{})):null};guardarCuenta();ir('cuenta');nubeSync(true);}
 function enviarPrograma(msg){
  const C=S.cuenta,sp=C.solProg;if(!sp) return;const pr=todosProgramas().find(x=>x.id===sp.id);
+ if(sp.sb) nubeActualizar(sp.sb,{estado:'activa',fecha_inicio:hoyISO()});
  if(pr) registrarCompra(pr.padre?`${CONTENIDO.programas.find(x=>x.id===pr.padre).nombre} · ${pr.nombre}`:pr.nombre,'Programas',pr.precio);
- C.prog={id:sp.id,sub:sp.sub,origen:sp.origen||null,resp:sp.resp||null};C.inicio=hoyISO();C.hechas={};C.mov={};C.diasSel=null;C.progEnviado=new Date().toISOString();C.solProg=null;
+ C.prog={id:sp.id,sub:sp.sub,origen:sp.origen||null,resp:sp.resp||null,sb:sp.sb||null};C.inicio=hoyISO();C.hechas={};C.mov={};C.diasSel=null;C.progEnviado=new Date().toISOString();C.solProg=null;
  if(msg) C.mensajes.push({de:'entrenadora',txt:msg,fecha:new Date().toISOString()});guardarCuenta();}
 function nombreSol(sp){const pr=todosProgramas().find(x=>x.id===sp.id);if(!pr) return sp.id;const sub=sp.sub&&pr.subplanes?pr.subplanes.find(x=>x.id===sp.sub):null;
  return `${pr.padre?CONTENIDO.programas.find(x=>x.id===pr.padre).nombre+' · ':''}${pr.nombre}${sub?' · '+sub.nombre:''}`;}
@@ -1600,8 +1601,8 @@ function irCuestPersonal(){
 function solicitarEntrenador(){
  if(!S.pagoHecho){const m=CONTENIDO.personal.modalidades.find(x=>x.id===S.resp.personal.modalidad)||CONTENIDO.personal.modalidades[0];
   irPago({concepto:`Entrenamiento personal · ${m.nombre}`,linea:'Entrenamiento personal',precio:m.precio,tipo:'mensual',diferido:true},()=>{S.pagoHecho=true;solicitarEntrenador();S.pagoHecho=false;});return;}
- Object.assign(S.cuenta,{entrenador:true,estado:'pendiente',solicitud:JSON.parse(JSON.stringify(S.resp.personal)),fecha:new Date().toISOString(),plan:'',registros:[],mensajes:[]});
- guardarCuenta();ir('cuenta');
+ Object.assign(S.cuenta,{entrenador:true,estado:'pendiente',sbPersonal:null,solicitud:JSON.parse(JSON.stringify(S.resp.personal)),fecha:new Date().toISOString(),plan:'',registros:[],mensajes:[]});
+ guardarCuenta();ir('cuenta');nubeSync(true);
 }
 const fechaCorta=iso=>{try{return new Date(iso).toLocaleDateString('es-ES',{day:'numeric',month:'short'});}catch(e){return '';}};
 const nombreMod=id=>(CONTENIDO.personal.modalidades.find(m=>m.id===id)||{nombre:'—'}).nombre;
@@ -2332,7 +2333,7 @@ function renderCuenta(){
   const nb=$app.querySelector(`[data-ses="${k}"]`);nb&&nb.focus({preventScroll:true});});
  const br=document.getElementById('b-reset');if(br) br.onclick=()=>{S.cuenta.hechas={};guardarCuenta();renderCuenta();};
  bindTres();
- const bsc=document.getElementById('b-sol-cancel');if(bsc) bsc.onclick=()=>{S.cuenta.solProg=null;guardarCuenta();renderCuenta();};
+ const bsc=document.getElementById('b-sol-cancel');if(bsc) bsc.onclick=async()=>{const id=S.cuenta.solProg&&S.cuenta.solProg.sb;S.cuenta.solProg=null;guardarCuenta();renderCuenta();if(SB&&id){try{await SB.from('contratacion').delete().eq('id_contratacion',id);}catch(e){}}};
  bindRetoDuo();
  bindZonaCliente();
  bindVideo(()=>{const y=window.scrollY;renderCuenta();window.scrollTo(0,y);});
@@ -2773,6 +2774,7 @@ function renderPanel(){
  const bp=document.getElementById('b-plan');if(bp) bp.onclick=()=>{const v=document.getElementById('f-plan').value.trim();if(!v){const e=document.getElementById('plan-err');e.hidden=false;return;}C.plan=v;C.planBorrador=null;C.planEnviado=new Date().toISOString();S.verPlan=false;
   const msg=(document.getElementById('plan-msg')||{}).value;if(msg&&msg.trim()) C.mensajes.push({de:'entrenadora',txt:msg.trim(),fecha:new Date().toISOString()});
   if(C.estado!=='activo'){const m=CONTENIDO.personal.modalidades.find(x=>x.id===(C.solicitud&&C.solicitud.modalidad));registrarCompra(`Entrenamiento personal · ${m?m.nombre:''}`,'Entrenamiento personal',m&&m.precio);}
+  if(C.sbPersonal) nubeActualizar(C.sbPersonal,{estado:'activa',plan_personal:v,...(C.estado!=='activo'?{fecha_inicio:hoyISO()}:{})});
   C.estado='activo';guardarCuenta();re();};
  const eg=document.getElementById('ent-guardar');if(eg) eg.onclick=()=>{const v=k=>(document.getElementById('ent-'+k)||{}).value||'';C.entrevista={...(C.entrevista||{}),hecha:true,fecha:(C.entrevista&&C.entrevista.fecha)||new Date().toISOString(),antecedentes:v('antecedentes').trim(),lesiones:v('lesiones').trim(),medicacion:v('medicacion').trim(),otros:v('otros').trim(),conclusion:v('conclusion'),obs:v('obs').trim()};guardarCuenta();S.entOk=true;re();setTimeout(()=>{S.entOk=false;},50);};
  const na=document.getElementById('n-add');if(na) na.onclick=()=>{const t=document.getElementById('n-txt').value.trim();if(!t) return;C.notas.push({fecha:new Date().toISOString(),txt:t});guardarCuenta();re();};
@@ -3736,6 +3738,49 @@ async function entrarConSupabase(user,nombre){
 // Al abrir la web: si la sesión de Supabase ya no existe, se cierra también aquí
 if(SB){SB.auth.getSession().then(({data})=>{if(!data.session&&S.sesion){cerrarSesion();}}).catch(()=>{});
  SB.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY'){S.cambiarPass=true;ir('login');}});}
+
+/* ---------- Supabase: solicitudes y contrataciones (paso 2) ---------- */
+// Traduce el programa de la app a las tablas: subplan 'runners-5k' o programa 'fuerza'
+function idsPrograma(id,sub){const pr=todosProgramas().find(x=>x.id===id);return (sub&&pr&&pr.subplanes)?{id_subplan:`${id}-${sub}`}:{id_programa:id};}
+function progDeFila(f,subs){if(f.id_subplan){const s=subs[f.id_subplan];return {id:s?s.id_programa:f.id_subplan.split('-')[0],sub:f.id_subplan.slice(((s&&s.id_programa)||f.id_subplan.split('-')[0]).length+1)};}return {id:f.id_programa,sub:null};}
+let NUBE_T=0,NUBE_EN=false;
+async function nubeSync(forzar){
+ if(!SB||NUBE_EN||!S.sesion) return;if(!forzar&&Date.now()-NUBE_T<15000) return;
+ NUBE_EN=true;NUBE_T=Date.now();let cambio=false;
+ try{
+  const {data:ses}=await SB.auth.getSession();if(!ses.session){NUBE_EN=false;return;}
+  // 1) Subir lo que el cliente tenga pendiente de enviar
+  if(S.sesion==='cliente'&&S.cuenta.id===ses.session.user.id){const C=S.cuenta,uid=C.id;
+   if(C.solProg&&!C.solProg.sb){const {data,error}=await SB.from('contratacion').insert({id_usuario:uid,tipo:'programa',estado:'solicitada',...idsPrograma(C.solProg.id,C.solProg.sub)}).select('id_contratacion').single();
+    if(!error&&data){C.solProg.sb=data.id_contratacion;if(C.solProg.resp) await SB.from('cuestionario').insert({id_usuario:uid,id_contratacion:data.id_contratacion,tipo:C.solProg.origen||'programa',momento:'inicio',respuestas:C.solProg.resp});guardarCuenta();}}
+   if(C.entrenador&&C.estado==='pendiente'&&!C.sbPersonal&&C.solicitud){const {data,error}=await SB.from('contratacion').insert({id_usuario:uid,tipo:'personal',estado:'solicitada',id_modalidad_personal:C.solicitud.modalidad||'online'}).select('id_contratacion').single();
+    if(!error&&data){C.sbPersonal=data.id_contratacion;await SB.from('cuestionario').insert({id_usuario:uid,id_contratacion:data.id_contratacion,tipo:'personal',momento:'inicio',respuestas:C.solicitud});guardarCuenta();}}}
+  // 2) Leer (cada uno ve lo que le permite la seguridad de Supabase: el cliente lo suyo, la entrenadora todo)
+  const [U,K,Q,SP]=await Promise.all([SB.from('usuario').select('*'),SB.from('contratacion').select('*').order('id_contratacion'),SB.from('cuestionario').select('*'),SB.from('subplan').select('id_subplan,id_programa')]);
+  if(U.error||K.error) throw (U.error||K.error);
+  const subs={};(SP.data||[]).forEach(x=>subs[x.id_subplan]=x);
+  const resp={};(Q.data||[]).forEach(q=>{if(q.id_contratacion) resp[q.id_contratacion]=q;});
+  (U.data||[]).filter(u=>u.rol==='cliente').forEach(u=>{
+   let c=cuentaObj(u.id_usuario);if(!c){c=nuevaCuenta(u.id_usuario);cambio=true;}
+   const au={nombre:u.nombre,email:u.email,sb:true};if(!c.auth||c.auth.email!==u.email||c.auth.nombre!==u.nombre){c.auth=au;cambio=true;}
+   if(!c.alta){c.alta=u.fecha_alta;cambio=true;}
+   (K.data||[]).filter(k=>k.id_usuario===u.id_usuario).forEach(k=>{const q=resp[k.id_contratacion];
+    if(k.tipo==='programa'){const pg=progDeFila(k,subs);
+     if(k.estado==='solicitada'&&!c.prog&&!(c.solProg&&c.solProg.sb===k.id_contratacion)){c.solProg={id:pg.id,sub:pg.sub,fecha:c.solProg&&c.solProg.fecha||new Date().toISOString(),origen:q?q.tipo:null,resp:q?q.respuestas:null,sb:k.id_contratacion};cambio=true;}
+     if(k.estado==='activa'&&(!c.prog||c.prog.id!==pg.id)){c.prog={id:pg.id,sub:pg.sub,origen:q?q.tipo:null,resp:q?q.respuestas:null,sb:k.id_contratacion};c.inicio=k.fecha_inicio||hoyISO();c.hechas=c.hechas||{};c.solProg=null;cambio=true;}
+     if(['terminada'].includes(k.estado)&&c.solProg&&c.solProg.sb===k.id_contratacion){c.solProg=null;cambio=true;}}
+    else{
+     if(!c.entrenador||c.sbPersonal!==k.id_contratacion){Object.assign(c,{entrenador:true,sbPersonal:k.id_contratacion,solicitud:q?q.respuestas:(c.solicitud||{modalidad:k.id_modalidad_personal}),fecha:c.fecha||new Date().toISOString(),registros:c.registros||[],mensajes:c.mensajes||[]});cambio=true;}
+     const est=k.estado==='activa'?'activo':k.estado==='solicitada'?'pendiente':k.estado;if(c.estado!==est){c.estado=est;cambio=true;}
+     if(k.plan_personal&&c.plan!==k.plan_personal){c.plan=k.plan_personal;c.planEnviado=c.planEnviado||new Date().toISOString();cambio=true;}}
+   });
+   if(cambio) conCuenta(c,guardarCuenta);
+  });
+ }catch(e){console.warn('Supabase:',e&&e.message||e);}
+ NUBE_EN=false;
+ if(cambio&&['panel','cuenta'].includes(S.pantalla)){const y=window.scrollY;render();window.scrollTo(0,y);}
+}
+async function nubeActualizar(id,cambios){if(!SB||!id) return;try{const {error}=await SB.from('contratacion').update(cambios).eq('id_contratacion',id);if(error) console.warn('Supabase:',error.message);}catch(e){}}
 function ponerSesion(v){S.sesion=v;try{v?localStorage.setItem('cv-sesion',v):localStorage.removeItem('cv-sesion');}catch(e){}}
 function cerrarSesion(){if(SB) SB.auth.signOut().catch(()=>{});S.loginAviso='';if(S.sesion==='cliente'||S.cuenta.auth) usarCuenta(cuentaAnon());S.resp=respNuevo();S.r=S.resp.general;S.player=null;S.ctab='entreno';S.panelSel=null;S.solSel=null;ponerSesion(null);S.loginTab='entrar';S.pcSel=null;S.pcNuevo=false;S.pcBuscar='';S.chatOpen=false;ir('inicio');}
 function renderLogin(){
@@ -3806,6 +3851,7 @@ function renderLogin(){
  };
 }
 function render(){
+ setTimeout(()=>nubeSync(),0);
  aplicarPrecios();if(S.pantalla==='precios'&&!VP()) S.pantalla='inicio';
  if(S.pantalla==='cuenta'&&S.sesion!=='cliente'){if(S.sesion==='admin') S.pantalla='panel';else{S.despues='cuenta';S.pantalla='login';S.loginTab=S.loginTab==='registro'&&S.lastP==='login'?'registro':'entrar';}}
  if(S.pantalla==='panel'&&S.sesion!=='admin'){S.despues='panel';S.pantalla='login';S.loginTab='entrar';}
