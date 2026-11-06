@@ -1492,7 +1492,7 @@ function ENT(){const E=CONTENIDO.entrenadora,O=CONTENIDO_ORIG.entrenadora;Object
  E.formacion=(E.formacion||[]).map(x=>typeof x==='string'?{titulo:x,centro:'',anio:''}:x);return E;}
 const VP=()=>CONTENIDO.mostrarPrecios==='si';
 // Funciones apagadas de momento (versión simplificada). Cambia false por true para volver a activarlas.
-var FN={directos:false,ciclo:false,strava:false,pagos:false,negocio:false,rutinasPortada:false,chat:false,agenda:false,notas:false,reto:false,duo:false};
+var FN={directos:false,ciclo:false,strava:false,pagos:false,negocio:false,rutinasPortada:false,chat:false,agenda:false,notas:false,reto:false,duo:false,logros:false};
 function modVis(m){return (FN&&FN.agenda)||m.id!=='videollamada';}
 const ocultoId=id=>(CONTENIDO.ocultos||[]).includes(id);
 function progOculto(p){if(!p) return false;if(typeof p==='string') p=todosProgramas().find(x=>x.id===p)||{id:p};return ocultoId(p.id)||(!!p.padre&&ocultoId(p.padre));}
@@ -2036,7 +2036,7 @@ function logrosLista(I){
   ['valora','Tu opinión cuenta','Valora 5 sesiones o clases',val>=5,true]];
  return L.filter(x=>x[4]).map(([id,t,d,ok])=>({id,t,d,ok:!!ok}));}
 function logrosHTML(I){
- const C=S.cuenta;if(!C.auth) return '';
+ const C=S.cuenta;if(!C.auth||!FN.logros) return '';
  const L=logrosLista(I),n=L.filter(x=>x.ok).length,prog=I&&!I.p.clases,R=prog?rachas(I):semanasActivas();
  return `<section class="sec" id="logros"><div><p class="eyebrow">Logros</p><h2 class="sec-t">Tus logros</h2></div>
   <div class="racha"><span class="racha-n">${R.actual}</span><div><b>${R.actual===1?'semana seguida':'semanas seguidas'} ${prog?'cumpliendo tu plan':'entrenando'}</b><p class="sec-sub">Tu mejor racha: ${R.max} ${R.max===1?'semana':'semanas'}</p></div></div>
@@ -2044,7 +2044,7 @@ function logrosHTML(I){
   <div class="logros">${L.map(x=>`<div class="logro ${x.ok?'ok':''}"><span class="medalla" aria-hidden="true">${x.ok?'★':'☆'}</span><b>${x.t}</b><span>${x.d}</span>${x.ok?'<span class="sr">Conseguido</span>':''}</div>`).join('')}</div></section>`;
 }
 // Aviso de logros nuevos (se marca como visto al mostrarlo)
-function logrosNuevosHTML(I){const C=S.cuenta;if(!C.auth) return '';const ok=logrosLista(I).filter(x=>x.ok);
+function logrosNuevosHTML(I){const C=S.cuenta;if(!C.auth||!FN.logros) return '';const ok=logrosLista(I).filter(x=>x.ok);
  if(!Array.isArray(C.logrosVistos)){C.logrosVistos=ok.map(x=>x.id);guardarCuenta();return '';}
  const N=ok.filter(x=>!C.logrosVistos.includes(x.id));if(!N.length) return '';
  C.logrosVistos=[...C.logrosVistos,...N.map(x=>x.id)];guardarCuenta();
@@ -2687,7 +2687,7 @@ function datosLocalHTML(){
  if(C.solicitud) Q.push(['Cuestionario de entrenamiento personal',resumenHTML(C.solicitud)]);
  if(tieneResp(Object.fromEntries(Object.entries(S.resp.general).filter(([k])=>k!=='equipo'&&k!=='parq')))) Q.push(['Cuestionario inicial',resumenHTML(S.resp.general,PASOS)]);
  return `<section class="acc-card"><p class="eyebrow">Datos</p><h2>Sus datos</h2>
-  ${datosTabla([['Nombre',`<span class="nombre-propio">${esc(nombreLocal())}</span>`],['Email',esc((C.auth&&C.auth.email)||(C.contacto&&C.contacto.email)||'—')],['Teléfono',esc(sol.telefono||'')],['Cliente desde',C.alta?fechaLarga(C.alta):'—'],['Estado',ETQ_ESTADO[estadoLocal()]],['Servicios',serviciosLocal().map(etqServ).join(', ')],['Sesiones hechas',String(nH)],['Último entreno',C.ultimo?fechaLarga(C.ultimo):'—'],['Logros',(()=>{const L=logrosLista(infoPrograma());return `${L.filter(x=>x.ok).length} de ${L.length}`;})()],['Racha',(()=>{const R=semanasActivas();return `${R.actual} ${R.actual===1?'semana seguida':'semanas seguidas'}`;})()]])}
+  ${datosTabla([['Nombre',`<span class="nombre-propio">${esc(nombreLocal())}</span>`],['Email',esc((C.auth&&C.auth.email)||(C.contacto&&C.contacto.email)||'—')],['Teléfono',esc(sol.telefono||'')],['Cliente desde',C.alta?fechaLarga(C.alta):'—'],['Estado',ETQ_ESTADO[estadoLocal()]],['Servicios',serviciosLocal().map(etqServ).join(', ')],['Sesiones hechas',String(nH)],['Último entreno',C.ultimo?fechaLarga(C.ultimo):'—'],...(FN.logros?[['Logros',(()=>{const L=logrosLista(infoPrograma());return `${L.filter(x=>x.ok).length} de ${L.length}`;})()]]:[]),['Racha',(()=>{const R=semanasActivas();return `${R.actual} ${R.actual===1?'semana seguida':'semanas seguidas'}`;})()]])}
   ${Q.length?`<div class="cuest">${Q.map(([t,h])=>`<details class="legal"><summary>${esc(t)}</summary><div class="sec" style="gap:12px;margin-top:12px">${h}</div></details>`).join('')}</div>`:'<p class="sec-sub">No ha rellenado ningún cuestionario.</p>'}</section>`;}
 function progAsignadoHTML(p,sub,o){
  const E=estructuraProg(p,sub),k=sub?p.id+'/'+sub.id:p.id,W=(CONTENIDO.planes||{})[k]||[],PL=CONTENIDO.plantillas||[];
