@@ -1492,7 +1492,7 @@ function ENT(){const E=CONTENIDO.entrenadora,O=CONTENIDO_ORIG.entrenadora;Object
  E.formacion=(E.formacion||[]).map(x=>typeof x==='string'?{titulo:x,centro:'',anio:''}:x);return E;}
 const VP=()=>CONTENIDO.mostrarPrecios==='si';
 // Funciones apagadas de momento (versión simplificada). Cambia false por true para volver a activarlas.
-var FN={directos:false,ciclo:false,strava:false,pagos:false,negocio:false,rutinasPortada:false,chat:false,agenda:false,notas:false};
+var FN={directos:false,ciclo:false,strava:false,pagos:false,negocio:false,rutinasPortada:false,chat:false,agenda:false,notas:false,reto:false,duo:false};
 function modVis(m){return (FN&&FN.agenda)||m.id!=='videollamada';}
 const ocultoId=id=>(CONTENIDO.ocultos||[]).includes(id);
 function progOculto(p){if(!p) return false;if(typeof p==='string') p=todosProgramas().find(x=>x.id===p)||{id:p};return ocultoId(p.id)||(!!p.padre&&ocultoId(p.padre));}
@@ -2032,7 +2032,7 @@ function logrosLista(I){
   ['apto','Apta/o','Consigue un simulacro apto',!!apto,!!C.opo],
   ['strava','Conectada','Conecta tu Strava',!!C.strava,FN.strava&&(run||!!C.strava)],
   ['ciclo','Conoce tu ciclo','Registra dos reglas en Mi ciclo',!!cyOk,FN.ciclo&&!!cy],
-  ['reto','Reto superado','Completa el reto del mes',retoOk,true],
+  ['reto','Reto superado','Completa el reto del mes',retoOk,FN.reto],
   ['valora','Tu opinión cuenta','Valora 5 sesiones o clases',val>=5,true]];
  return L.filter(x=>x[4]).map(([id,t,d,ok])=>({id,t,d,ok:!!ok}));}
 function logrosHTML(I){
@@ -2317,7 +2317,7 @@ function renderCuenta(){
   <div class="actions"><button class="btn ghost" data-nav="programas">Cambiar de programa</button><button class="btn ghost" id="b-reset">Reiniciar progreso</button></div>`;
   }
  }
- html+=progresoHTML(I)+marcasHTML(false)+logrosHTML(I)+retoHTML()+duoHTML(I)+instalarHTML()+`</main>`;
+ html+=progresoHTML(I)+marcasHTML(false)+logrosHTML(I)+(FN.reto?retoHTML():'')+(FN.duo?duoHTML(I):'')+instalarHTML()+`</main>`;
  $app.innerHTML=html;
  bindGo();
  $app.querySelectorAll('[data-ctab]').forEach(b=>b.onclick=()=>{S.ctab=b.dataset.ctab;renderCuenta();});
@@ -3945,7 +3945,7 @@ function renderPrograma(){
   :p.clases?`<section class="sec"><h2 class="sec-t">Clases</h2><p class="sec-sub">La primera clase es gratis: pruébala antes de comprar el pack.</p><div class="videos">${p.clases.map(claseCard).join('')}</div></section>`
   :'<section class="blk"><h3>Contenido del programa</h3><span class="pend">Sesiones pendientes</span></section>'}
   ${p.id==='runners'?calcHTML():''}
-  ${!p.clases?`<aside class="duo-box"><div><b>¿Entrenas con una amiga?</b><p class="sec-sub">Plan dúo: el mismo programa para las dos y veis el progreso de la otra. <span class="precio-txt">${CONTENIDO.duo.precio?esc(CONTENIDO.duo.precio):'<span class="pend">Precio pendiente</span>'}</span></p></div></aside>`:''}
+  ${!p.clases&&FN.duo?`<aside class="duo-box"><div><b>¿Entrenas con una amiga?</b><p class="sec-sub">Plan dúo: el mismo programa para las dos y veis el progreso de la otra. <span class="precio-txt">${CONTENIDO.duo.precio?esc(CONTENIDO.duo.precio):'<span class="pend">Precio pendiente</span>'}</span></p></div></aside>`:''}
   <div class="actions">${['menopausia','fuerza','hibrido'].includes(p.id)?`<button class="btn" data-go="test-${p.id}">Empezar programa</button>`:OPOS[p.id]?'<button class="btn" data-go="test-opos">Empezar programa</button>':p.id==='embarazo'?'<button class="btn" data-go="test-embarazo">Empezar programa</button>':p.id==='postparto'?'<button class="btn" data-go="test-postparto">Empezar programa</button>':p.clases&&S.cuenta.packs.includes(p.id)?'<span class="estado ok">Ya tienes este pack</span><button class="btn ghost" data-nav="cuenta">Ver en mi cuenta</button>':`<button class="btn" id="b-comprar">${p.clases?'Comprar':'Empezar programa'}</button>`}</div>
   <section class="cta"><h2>¿No sabes si es para ti?</h2><p>El cuestionario te orienta en unos 2 minutos.</p><button class="btn" data-go="cuestionario">Hacer el cuestionario</button></section>
  </main>`;
