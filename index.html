@@ -1169,7 +1169,7 @@ const CONTENIDO={
  // Precios: 'no' = no se muestran en ninguna parte de la web (se pueden activar en el panel → Contenido)
  mostrarPrecios:'no',
  // Programas ocultos en la web (se siguen pudiendo editar en el panel → Contenido → Programas)
- ocultos:['opositores'],
+ ocultos:['opositores','embarazo','postparto','mujer','pilates'],
  entrenadora:{nombre:'Iria Castro',presentacion:'',
   formacion:[],colegiada:'',
   metodo:[{titulo:'',texto:''},{titulo:'',texto:''},{titulo:'',texto:''}],
@@ -1481,7 +1481,7 @@ const nuevo=()=>({equipo:[],parq:[null,null,null,null]});
 function respNuevo(){return {general:nuevo(),menopausia:{},fuerza:{},hibrido:{},opos:{},embarazo:{contra:[]},postparto:{complic:[]},runners:{},personal:{equipo:[],parq:[null,null,null,null]}};}
 let S={pantalla:'inicio',paso:0,q:'general',resp:{general:nuevo(),menopausia:{},fuerza:{},hibrido:{},opos:{},embarazo:{contra:[]},postparto:{complic:[]},runners:{},personal:{equipo:[],parq:[null,null,null,null]}},r:null,f:{modalidad:'Todas',material:'Todos',duracion:'Todas'},prog:null,regE:{},reg:{sens:null,rpe:6,mol:null,molTxt:'',com:''},panelSel:null};S.r=S.resp.general;
 PERSONAL_PASOS[5].campos[0].preguntas=PASOS[5].campos.find(f=>f.id==='parq').preguntas;
-PERSONAL_PASOS[0].campos.find(f=>f.id==='modalidad').opciones=CONTENIDO.personal.modalidades.map(m=>[m.id,m.nombre]);S.cuenta=cargarCuenta();S.sesion=(()=>{try{return localStorage.getItem('cv-sesion');}catch(e){return null;}})();
+PERSONAL_PASOS[0].campos.find(f=>f.id==='modalidad').opciones=CONTENIDO.personal.modalidades.filter(modVis).map(m=>[m.id,m.nombre]);S.cuenta=cargarCuenta();S.sesion=(()=>{try{return localStorage.getItem('cv-sesion');}catch(e){return null;}})();
 
 const $app=document.getElementById('app');
 const esc=s=>String(s).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
@@ -1491,13 +1491,16 @@ function ir(p,extra){S.pantalla=p;Object.assign(S,extra||{});render();window.scr
 function ENT(){const E=CONTENIDO.entrenadora,O=CONTENIDO_ORIG.entrenadora;Object.keys(O).forEach(k=>{if(E[k]===undefined) E[k]=JSON.parse(JSON.stringify(O[k]));});
  E.formacion=(E.formacion||[]).map(x=>typeof x==='string'?{titulo:x,centro:'',anio:''}:x);return E;}
 const VP=()=>CONTENIDO.mostrarPrecios==='si';
+// Funciones apagadas de momento (versión simplificada). Cambia false por true para volver a activarlas.
+var FN={directos:false,ciclo:false,strava:false,pagos:false,negocio:false,rutinasPortada:false,chat:false,agenda:false,notas:false};
+function modVis(m){return (FN&&FN.agenda)||m.id!=='videollamada';}
 const ocultoId=id=>(CONTENIDO.ocultos||[]).includes(id);
 function progOculto(p){if(!p) return false;if(typeof p==='string') p=todosProgramas().find(x=>x.id===p)||{id:p};return ocultoId(p.id)||(!!p.padre&&ocultoId(p.padre));}
 function aplicarPrecios(){document.body.classList.toggle('sin-precios',!VP());}
-const NAV=[['inicio','Inicio'],['entrenos','Rutinas'],['programas','Programas'],['pilates','Entrena conmigo'],['directo','En directo'],['precios','Precios'],['entrenador','Entrenador personal'],['sobre','Sobre mí']];
+const NAV=[['inicio','Inicio'],...(FN.rutinasPortada?[['entrenos','Rutinas']]:[]),['programas','Programas'],['pilates','Entrena conmigo'],['directo','En directo'],['precios','Precios'],['entrenador','Entrenador personal'],['sobre','Sobre mí']];
 function nav(){
  const act=S.pantalla==='sobre'?'sobre':S.pantalla==='precios'?'precios':S.pantalla==='directo'?'directo':((S.pantalla==='carpeta'&&S.carp==='pilates')||(S.pantalla==='programa'&&String(S.prog).startsWith('pilates')))?'pilates':S.pantalla==='personal'?'entrenador':S.pantalla==='cuenta'?'cuenta':S.pantalla==='inicio'?'inicio':(S.pantalla==='programa'||S.pantalla==='carpeta')?'programas':S.pantalla==='entreno'?'entrenos':'';
- return `<nav class="nav" aria-label="Principal">${NAV.filter(([k])=>k!=='precios'||VP()).map(([k,t])=>`<button data-nav="${k}" ${k===act?'aria-current="page"':''}>${t}</button>`).join('')}</nav>`;
+ return `<nav class="nav" aria-label="Principal">${NAV.filter(([k])=>(k!=='precios'||VP())&&(k!=='directo'||FN.directos)&&(k!=='pilates'||!ocultoId('pilates'))).map(([k,t])=>`<button data-nav="${k}" ${k===act?'aria-current="page"':''}>${t}</button>`).join('')}</nav>`;
 }
 function topbar(der){
  const conNav=der===undefined;
@@ -1535,7 +1538,7 @@ function bindGo(){
   const el=document.getElementById(k);if(el) el.scrollIntoView({behavior:'smooth'});
  });
  $app.querySelectorAll('[data-prog]').forEach(b=>b.onclick=()=>ir('programa',{prog:b.dataset.prog}));
- $app.querySelectorAll('[data-hablar]').forEach(b=>b.onclick=()=>{S.chatOpen=true;renderChat();});
+ $app.querySelectorAll('[data-hablar]').forEach(b=>{if(!FN.chat){b.remove();return;}b.onclick=()=>{S.chatOpen=true;renderChat();};});
  $app.querySelectorAll('[data-carpeta]').forEach(b=>b.onclick=()=>ir('carpeta',{carp:b.dataset.carpeta}));
 }
 /* ---------- Mi cuenta (prototipo: se guarda solo en este navegador) ---------- */
@@ -1550,7 +1553,7 @@ function dbLeer(){let d=null;try{d=JSON.parse(localStorage.getItem('cv-db'));}ca
  return d;}
 function dbGuardar(){try{localStorage.setItem('cv-db',JSON.stringify(DB));}catch(e){}}
 function cuentaObj(id){if(!id) return null;if(OBJ[id]) return OBJ[id];const raw=DB.cuentas[id];if(!raw) return null;const c={...CUENTA0(),...raw,id};
- SK().forEach(k=>{delete c[k];Object.defineProperty(c,k,{get(){return DB.shared[k];},set(v){DB.shared[k]=v;},enumerable:false,configurable:true});});return OBJ[id]=c;}
+ SK().forEach(k=>{delete c[k];Object.defineProperty(c,k,{get(){return k==='directos'&&!FN.directos?[]:DB.shared[k];},set(v){DB.shared[k]=v;},enumerable:false,configurable:true});});return OBJ[id]=c;}
 const nuevoIdC=()=>'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 function nuevaCuenta(id){id=id||nuevoIdC();const o={...CUENTA0(),id};SK().forEach(k=>delete o[k]);DB.cuentas[id]=o;delete OBJ[id];return cuentaObj(id);}
 function cuentaAnon(){return cuentaObj('anon')||nuevaCuenta('anon');}
@@ -1615,7 +1618,8 @@ const misEntrevistas=()=>S.cuenta.huecos.filter(x=>esEnt(x)&&x.reserva===S.cuent
 const misVideos=()=>S.cuenta.huecos.filter(x=>!esEnt(x)&&x.reserva===S.cuenta.id).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora));
 const futuros=L=>L.filter(x=>x.fecha>=hoyISO());
 function enMes(iso){return iso.slice(0,7)===hoyISO().slice(0,7);}
-function entrevistaHTML(donde){
+function entrevistaHTML(){if(!FN.agenda) return '';return entrevistaHTML0(...arguments);}
+function entrevistaHTML0(donde){
  const C=S.cuenta,log=S.sesion==='cliente'&&C.auth,E=C.entrevista,mias=misEntrevistas(),prox=futuros(mias)[0],pas=mias.filter(x=>x.fecha<hoyISO()).slice(-1)[0];
  const libres=futuros(C.huecos.filter(x=>esEnt(x)&&!x.reserva)).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora)).slice(0,8),enl=C.enlaceVideo;
  const tit=`<p class="eyebrow">Entrevista inicial · opcional</p><h2>${prox?'Tu entrevista con tu entrenadora':'¿Hablamos antes de empezar?'}</h2>`;
@@ -1629,7 +1633,7 @@ function entrevistaHTML(donde){
    :libres.length?`<span class="lbl">Elige un hueco</span><div class="huecos">${libres.map(x=>`<button class="hueco" data-ereservar="${x.id}"><b>${esc(fechaDirecto(x))}</b><small>${esc(x.dur)} min</small></button>`).join('')}</div>`
    :`<p class="ph">Ahora mismo no hay huecos libres para entrevistas.</p><div class="actions"><button class="btn ghost" data-hablar="1">Escríbeme y buscamos uno</button></div>`}`;
  return `<section class="acc-card entrevista ${donde||''}">${tit}${cuerpo}</section>`;}
-function videoClienteHTML(activo){
+function videoClienteHTML(activo){if(!FN.agenda) return '';
  const C=S.cuenta,M=CONTENIDO.personal.modalidades.find(m=>m.id==='videollamada'),lim=+M.sesionesMes||0;
  const mias=futuros(misVideos()),usadas=misVideos().filter(x=>enMes(x.fecha)).length,quedan=lim?Math.max(0,lim-usadas):null;
  const libres=futuros(C.huecos.filter(x=>!x.reserva&&!esEnt(x))).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora));
@@ -1694,7 +1698,7 @@ function zonaCliente(){
    ${C.registros.length?`<div class="regs">${C.registros.slice().reverse().map(x=>`<div class="reg"><b>Semana ${x.semana}</b><span>${SENS[x.sens-1]} · RPE ${x.rpe} · Molestias: ${x.mol==='si'?esc(x.molTxt||'sí'):'no'}</span></div>`).join('')}</div>`:''}
   </section>`:''}
   ${activo?tecnicaClienteHTML():''}
-  <section class="acc-card"><p class="eyebrow">Mensajes</p><h2>Habla con tu entrenadora</h2>${mensajesHTML('cliente')}</section>`;
+  ${FN.chat?`<section class="acc-card"><p class="eyebrow">Mensajes</p><h2>Habla con tu entrenadora</h2>${mensajesHTML('cliente')}</section>`:''}`;
 }
 function tecnicaClienteHTML(){const T=S.cuenta.tecnica||[];
  return `<section class="acc-card" id="tec"><p class="eyebrow">Corrección de técnica</p><h2>Envíame un vídeo</h2><p class="sec-sub">Grábate haciendo un ejercicio (mejor de lado y que se te vea el cuerpo entero) y te diré qué corregir.</p>
@@ -1812,7 +1816,7 @@ function avisosHTML(I){
  }
  return `${A.length?`<section class="avisos" aria-label="Recordatorios"><p class="eyebrow">Recordatorios</p><ul>${A.map(a=>`<li>${a}</li>`).join('')}</ul></section>`:''}
   <details class="legal ajustes"><summary>Ajustes de recordatorios</summary>
-   ${[['directos','Clases en directo (el día antes y el mismo día)'],['inactividad','Si llevo varios días sin entrenar'],['registro','Registro semanal pendiente'],['eventos','Examen, carrera o fecha de parto cercanos']].map(([k,t])=>`<label class="check-row"><input type="checkbox" data-pref="${k}" ${P[k]?'checked':''}><span>${t}</span></label>`).join('')}
+   ${[...(FN.directos?[['directos','Clases en directo (el día antes y el mismo día)']]:[]),['inactividad','Si llevo varios días sin entrenar'],['registro','Registro semanal pendiente'],['eventos','Examen, carrera o fecha de parto cercanos']].map(([k,t])=>`<label class="check-row"><input type="checkbox" data-pref="${k}" ${P[k]?'checked':''}><span>${t}</span></label>`).join('')}
    <p>En la versión final también te llegarán por email o como notificación en el móvil.</p></details>`;
 }
 function bindTres(){
@@ -2010,8 +2014,8 @@ function logrosLista(I){
  const L=[
   ['bienv','Bienvenida','Crea tu cuenta',!!C.auth,true],
   ['primero','Primer paso','Haz tu primer entreno',tot>=1,true],
-  ['e10','10 entrenos','Suma 10 sesiones, clases o directos',tot>=10,true],
-  ['e25','25 entrenos','Suma 25 sesiones, clases o directos',tot>=25,true],
+  ['e10','10 entrenos',FN.directos?'Suma 10 sesiones, clases o directos':'Suma 10 sesiones o clases',tot>=10,true],
+  ['e25','25 entrenos',FN.directos?'Suma 25 sesiones, clases o directos':'Suma 25 sesiones o clases',tot>=25,true],
   ['cons','Constancia','Entrena 4 semanas seguidas',A.max>=4,true],
   ['semana','Semana completa','Completa todas las sesiones de una semana de tu plan',R.completas>=1,prog],
   ['expres','Mejor algo que nada','Haz una sesión en versión exprés',exp>=1,prog],
@@ -2020,14 +2024,14 @@ function logrosLista(I){
   ['progfin','Programa completado','Termina todas las sesiones de tu programa',prog&&ses>=I.total,prog],
   ['pil1','Entrena conmigo','Haz tu primera clase de un pack',pil>=1,C.packs.length>0],
   ['pilfin','Pack completado','Haz todas las clases de un pack',packDone,C.packs.length>0],
-  ['dir1','En directo','Asiste a tu primera clase en directo',dirs>=1,!!C.dirPlan||C.reservas.length>0||eligeGratis()],
-  ['dir5','Fija en los directos','Asiste a 5 clases en directo',dirs>=5,!!C.dirPlan||C.reservas.length>0||eligeGratis()],
-  ['ent','Nos conocemos','Haz la entrevista inicial con tu entrenadora',ent,C.entrenador||misEntrevistas().length>0],
+  ['dir1','En directo','Asiste a tu primera clase en directo',dirs>=1,FN.directos&&(!!C.dirPlan||C.reservas.length>0||eligeGratis())],
+  ['dir5','Fija en los directos','Asiste a 5 clases en directo',dirs>=5,FN.directos&&(!!C.dirPlan||C.reservas.length>0||eligeGratis())],
+  ['ent','Nos conocemos','Haz la entrevista inicial con tu entrenadora',ent,FN.agenda&&(C.entrenador||misEntrevistas().length>0)],
   ['reg4','Constante con tu entrenadora','Envía 4 registros semanales',C.registros.length>=4,C.entrenador],
   ['tec','A pulir la técnica','Envía tu primer vídeo de técnica',(C.tecnica||[]).length>=1,C.entrenador],
   ['apto','Apta/o','Consigue un simulacro apto',!!apto,!!C.opo],
-  ['strava','Conectada','Conecta tu Strava',!!C.strava,run||!!C.strava],
-  ['ciclo','Conoce tu ciclo','Registra dos reglas en Mi ciclo',!!cyOk,!!cy],
+  ['strava','Conectada','Conecta tu Strava',!!C.strava,FN.strava&&(run||!!C.strava)],
+  ['ciclo','Conoce tu ciclo','Registra dos reglas en Mi ciclo',!!cyOk,FN.ciclo&&!!cy],
   ['reto','Reto superado','Completa el reto del mes',retoOk,true],
   ['valora','Tu opinión cuenta','Valora 5 sesiones o clases',val>=5,true]];
  return L.filter(x=>x[4]).map(([id,t,d,ok])=>({id,t,d,ok:!!ok}));}
@@ -2118,7 +2122,7 @@ function calendarioHTML(I){
  return `<section class="acc-card cal"><div class="cal-head"><div><p class="eyebrow">Tu semana</p><h2>${(S.semOff||0)===0?'Esta semana':rango}</h2>${C.fpp&&!gestacion(C.fpp).nacido?`<p class="sec-sub">Semana ${(()=>{const g=gestacion(C.fpp);return g.sem+Math.round((lun-lunesDe(hoy))/6048e5);})()} de embarazo</p>`:semProg&&I&&semProg>=1&&semProg<=I.semanas?`<p class="sec-sub">Semana ${semProg} de ${I.semanas} de ${esc(I.nombre)}</p>`:''}</div>
   <div class="cal-nav"><button class="btn ghost sm" data-sem="-1" aria-label="Semana anterior">‹</button><span>${rango}</span><button class="btn ghost sm" data-sem="1" aria-label="Semana siguiente">›</button></div></div>
   <div class="cal-grid">${dias.map((d,i)=>`<div class="cal-day ${isoDias[i]===hoy?'hoy':''}"><div class="cal-dh"><span>${DCORTO[i]}</span><b>${d.getDate()}</b></div><div class="cal-items">${items[i].join('')||'<span class="cal-libre">—</span>'}</div></div>`).join('')}</div>
-  ${vacio?'<p class="ph">Esta semana no tienes nada programado. Tus sesiones, clases en directo y registros aparecerán aquí.</p>':''}
+  ${vacio?'<p class="ph">Esta semana no tienes nada programado. Tus sesiones'+(FN.directos?', clases en directo':'')+' y registros aparecerán aquí.</p>':''}
   ${(()=>{if(!S.calSel||!semProg||!I) return '';const x=sesionesSemana(I,semProg).find(z=>z.key===S.calSel);if(!x) return '';const d=!!C.hechas[x.key];
    return `<div class="cal-menu"><div><b>Sesión ${x.n} · ${DCORTO[x.dia]} ${dias[x.dia].getDate()}</b>${x.movida?'<span class="sec-sub"> · movida</span>':''}</div>
     <div class="actions">${d?'':`<button class="btn sm" data-play="${x.key}">Empezar</button>`}<button class="btn ghost sm" data-ses="${x.key}">${d?'Marcar como no hecha':'Marcar como hecha'}</button></div>
@@ -2264,7 +2268,7 @@ function renderCuenta(){
  const I=infoPrograma(),nombre=((S.cuenta.auth&&S.cuenta.auth.nombre)||S.resp.general.nombre||(S.cuenta.solicitud&&S.cuenta.solicitud.nombre)||'').trim();
  let html=topbar()+`<main class="page">
   <div class="acc-head"><div><p class="eyebrow">Mi cuenta</p><h1>${nombre?`Hola, <span class="nombre-propio">${esc(nombre)}</span>`:'Hola'}</h1></div><button class="btn ghost sm" data-go="salir">Cerrar sesión</button></div>`+ctabsHTML();
- const ct=S.ctab||'entreno',reT=()=>{const y=window.scrollY;renderCuenta();window.scrollTo(0,y);};
+ const ct=(S.ctab&&CTABS.some(x=>x[0]===S.ctab))?S.ctab:'entreno',reT=()=>{const y=window.scrollY;renderCuenta();window.scrollTo(0,y);};
  if(ct!=='entreno'){html+=(ct==='ciclo'?cicloHTML():ct==='strava'?stravaHTML(false):pagosHTML())+`</main>`;$app.innerHTML=html;bindGo();
   $app.querySelectorAll('[data-ctab]').forEach(b=>b.onclick=()=>{S.ctab=b.dataset.ctab;renderCuenta();});
   if(ct==='ciclo') bindCiclo(reT);if(ct==='strava') bindStrava(reT);
@@ -2380,7 +2384,7 @@ function renderPersonal(){
   </section>
 
   <section class="sec" id="modalidades"><div><p class="eyebrow">Modalidades</p><h2 class="sec-t">Elige cómo quieres entrenar</h2><p class="sec-sub">Después rellenarás el cuestionario inicial, unos 5 minutos, para que tu entrenadora valore tu caso.</p></div>
-   <div class="mods">${CONTENIDO.personal.modalidades.map((m,i)=>`<article class="mod ${i===1?'top':''}">${i===1?'<span class="badge">Recomendada</span>':''}<h3>${esc(m.nombre)}</h3>
+   <div class="mods">${CONTENIDO.personal.modalidades.filter(modVis).map((m,i)=>`<article class="mod ${i===1?'top':''}">${i===1?'<span class="badge">Recomendada</span>':''}<h3>${esc(m.nombre)}</h3>
     <ul>${m.incluye.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
     <p class="price">${m.precio?esc(m.precio):'<span class="pend">Precio pendiente</span>'}</p>
     <button class="btn ${i===1?'':'ghost'}" data-mod="${m.id}">Elegir</button></article>`).join('')}</div>
@@ -2490,7 +2494,7 @@ function pInicioHTML(T){
  const activos=clientes().filter(c=>conCuenta(c,()=>hayLocal()&&estadoLocal()==='activo')).length;
  const pend=clientes().reduce((a,c)=>a+(c.entrenador&&c.estado==='pendiente'?1:0)+(c.solProg?1:0),0);
  const dia=new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
- return `<div class="stats panel-stats"><div class="stat"><b>${activos}</b><span>clientes activos</span></div><div class="stat"><b>${pend}</b><span>solicitudes pendientes</span></div><div class="stat"><b>${noL}</b><span>mensajes sin leer</span></div><div class="stat"><b>${citas}</b><span>citas esta semana</span></div></div>
+ return `<div class="stats panel-stats"><div class="stat"><b>${activos}</b><span>clientes activos</span></div><div class="stat"><b>${pend}</b><span>solicitudes pendientes</span></div>${FN.chat?`<div class="stat"><b>${noL}</b><span>mensajes sin leer</span></div>`:''}${FN.agenda?`<div class="stat"><b>${citas}</b><span>citas esta semana</span></div>`:''}</div>
   <section class="sec"><div><p class="eyebrow">Hoy · ${esc(dia)}</p><h2 class="sec-t">Tus tareas</h2></div>
   ${T.length?`<ul class="tareas">${T.map((x,i)=>`<li class="tarea ${x.alerta?'alerta':''}"><span class="t-tipo">${esc(x.tipo)}</span><div><b>${esc(x.t)}</b><span>${esc(x.d)}</span></div><div class="t-acts">${x.link?`<a class="btn sm" href="${esc(x.link)}" target="_blank" rel="noopener">Unirme</a>`:''}<button class="btn ghost sm" data-tarea="${i}">${x.a.startsWith('chat')?'Responder':x.a.startsWith('sala')?'Abrir sala':x.a==='agenda'?'Ver agenda':x.a.startsWith('val')?'Ver':'Abrir ficha'}</button></div></li>`).join('')}</ul>`
   :'<div class="todo-ok"><b>Todo al día</b><p class="sec-sub">No tienes tareas pendientes. Buen momento para preparar contenido.</p></div>'}</section>
@@ -2549,7 +2553,7 @@ function pSolicitudHTML(){
   <section class="sol-sec"><h3>Programas</h3><p class="sec-sub">Revisa sus respuestas, echa un ojo al programa y envíalo.</p>${prog||(ejProg.length?'':'<p class="ph">No hay solicitudes de programas.</p>')}${ejProg.map(fila).join('')}</section>
   <section class="sol-sec"><h3>Entrenamiento personal</h3><p class="sec-sub">Son planes a medida: prepáralos en la ficha de cada cliente.</p>${pers||(ejPers.length?'':'<p class="ph">No hay solicitudes de entrenamiento personal.</p>')}${ejPers.map(fila).join('')}</section></section>`;
 }
-function entrevistaFichaHTML(){const C=S.cuenta,E=C.entrevista||{},L=misEntrevistas(),prox=futuros(L)[0],ult=L.slice(-1)[0];
+function entrevistaFichaHTML(){if(!FN.agenda) return '';const C=S.cuenta,E=C.entrevista||{},L=misEntrevistas(),prox=futuros(L)[0],ult=L.slice(-1)[0];
  const ta=(k,l,ph)=>`<div class="field"><label for="ent-${k}">${l}</label><textarea id="ent-${k}" rows="2" placeholder="${ph||''}">${esc(E[k]||'')}</textarea></div>`;
  return `<section class="acc-card ent-ficha" id="f-ent"><p class="eyebrow">Entrevista inicial</p><h2>${E.hecha?'Entrevista hecha':prox?`Reservada para el ${esc(fechaDirecto(prox))}`:ult?'Pendiente de apuntar':'Sin entrevista reservada'}</h2>
   ${!E.hecha&&!L.length?'<p class="sec-sub">No ha reservado entrevista. Si quieres hacérsela, escríbele o abre huecos de entrevista en Agenda.</p>':''}
@@ -2607,7 +2611,7 @@ function pClientesHTML(){
   <nav class="ptabs cli-tabs" role="tablist" aria-label="Tipo de clienta"><button role="tab" aria-selected="${tabC==='personal'}" data-clitab="personal">Entrenamiento personal <span class="pc-badge cnt-b">${nTab('personal')}</span></button><button role="tab" aria-selected="${tabC==='planes'}" data-clitab="planes">Planes <span class="pc-badge cnt-b">${nTab('planes')}</span></button></nav>
   ${cliCuerpo}
   ${real?'':'<p class="ph">Cuando alguien cree su cuenta o te envíe una solicitud, aparecerá aquí con su ficha.</p>'}
-  <p class="sec-sub demo-reset">Las clientas con email @demo.castro son cuentas de prueba. ${S.demoRes?'<b>¿Restablecerlas?</b> Se perderán los cambios que hayas hecho en ellas. <button class="btn sm" id="demo-res-ok">Restablecer</button> <button class="link" id="demo-res-no">Cancelar</button>':'<button class="link" id="demo-res">Restablecer las cuentas de prueba</button>'}</p></section>`;
+  ${DEMO_ON?`<p class="sec-sub demo-reset">Las clientas con email @demo.castro son cuentas de prueba. ${S.demoRes?'<b>¿Restablecerlas?</b> Se perderán los cambios que hayas hecho en ellas. <button class="btn sm" id="demo-res-ok">Restablecer</button> <button class="link" id="demo-res-no">Cancelar</button>':'<button class="link" id="demo-res">Restablecer las cuentas de prueba</button>'}</p>`:''}</section>`;
 }
 function avisosSalud(){
  const C=S.cuenta,r=C.solicitud||{},A=[],E=C.entrevista;
@@ -2655,11 +2659,11 @@ function fichaHTML(){
   ${informeHTML()}
   ${marcasHTML(true)}
   ${rpeSesHTML()}
-  ${stravaHTML(true)}
-  ${cicloFichaHTML()}
-  <section class="acc-card"><p class="eyebrow">Notas privadas</p><h2>Tus notas</h2><p class="sec-sub">Solo las ves tú.</p>
+  ${FN.strava?stravaHTML(true):''}
+  ${FN.ciclo?cicloFichaHTML():''}
+  ${FN.notas?`<section class="acc-card"><p class="eyebrow">Notas privadas</p><h2>Tus notas</h2><p class="sec-sub">Solo las ves tú.</p>
    <div class="chat-form"><textarea id="n-txt" rows="2" placeholder="Ej.: prefiere entrenar por la mañana; vigilar rodilla izquierda"></textarea><button class="btn" id="n-add">Añadir</button></div>
-   ${C.notas.length?`<div class="regs">${C.notas.slice().reverse().map((n,i)=>`<div class="reg nota"><b>${fechaCorta(n.fecha)}</b><span>${esc(n.txt)}</span><button class="link" data-nborrar="${C.notas.length-1-i}">Borrar</button></div>`).join('')}</div>`:''}</section>
+   ${C.notas.length?`<div class="regs">${C.notas.slice().reverse().map((n,i)=>`<div class="reg nota"><b>${fechaCorta(n.fecha)}</b><span>${esc(n.txt)}</span><button class="link" data-nborrar="${C.notas.length-1-i}">Borrar</button></div>`).join('')}</div>`:''}</section>`:''}
   ${r&&r.modalidad==='videollamada'?`<section class="acc-card"><p class="eyebrow">Videollamadas</p><h2>Sus sesiones</h2>${misVideos().length?`<div class="regs">${misVideos().map(x=>`<div class="reg"><b>${esc(fechaDirecto(x))}</b><span>${esc(x.dur)} min${x.fecha<hoyISO()?' · hecha':''}</span></div>`).join('')}</div>`:'<p class="ph">Todavía no ha reservado ninguna sesión.</p>'}</section>`:''}
   ${C.entrenador?`<section class="acc-card"><p class="eyebrow">Seguimiento</p><h2>Registros semanales</h2>
    ${C.registros.length?`<div class="regs">${C.registros.slice().reverse().map(x=>`<div class="reg"><b>Semana ${x.semana} · ${fechaCorta(x.fecha)}</b><span>${['Muy mal','Mal','Normal','Bien','Muy bien'][x.sens-1]} · RPE ${x.rpe} · Molestias: ${x.mol==='si'?esc(x.molTxt||'sí'):'no'}</span>${x.com?`<span>«${esc(x.com)}»</span>`:''}</div>`).join('')}</div>`:'<p class="ph">Todavía no ha enviado ningún registro.</p>'}</section>`:''}
@@ -2733,15 +2737,15 @@ function pAgendaHTML(){
  return `<section class="acc-card cal"><div class="cal-head"><div><p class="eyebrow">Agenda</p><h2>${(S.pagSem||0)===0?'Esta semana':rango}</h2></div>
   <div class="cal-nav"><button class="btn ghost sm" data-psem="-1" aria-label="Semana anterior">‹</button><span>${rango}</span><button class="btn ghost sm" data-psem="1" aria-label="Semana siguiente">›</button></div></div>
   <div class="cal-grid">${dias.map((d,i)=>`<div class="cal-day ${iso[i]===hoy?'hoy':''}"><div class="cal-dh"><span>${DCORTO[i]}</span><b>${d.getDate()}</b></div><div class="cal-items">${items[i].sort((a,b)=>a[0].localeCompare(b[0])).map(x=>x[1]).join('')||'<span class="cal-libre">—</span>'}</div></div>`).join('')}</div>
-  <p class="sec-sub">Abre huecos de videollamada y programa clases en directo aquí debajo.</p></section>`;
+  <p class="sec-sub">Abre huecos de videollamada y entrevistas aquí debajo.${FN.directos?' También puedes programar clases en directo.':''}</p></section>`;
 }
 /* --- Render principal del panel --- */
 function renderPanel(){
  {const foco=(S.ptab==='clientes'&&S.panelSel)||(S.ptab==='solicitudes'&&S.solSel)||(S.ptab==='mensajes'&&S.pcSel);const fc=cuentaObj(foco);if(fc) S.cuenta=fc;}
- const C=S.cuenta,tab=S.ptab||'inicio',T=tareasHoy(),noL=chatsAdmin().reduce((a,c)=>a+noLeidos(c),0);
+ const C=S.cuenta,tab=((S.ptab==='negocio'&&!FN.negocio)||(S.ptab==='mensajes'&&!FN.chat)||(S.ptab==='agenda'&&!FN.agenda))?'inicio':(S.ptab||'inicio'),T=tareasHoy().filter(x=>FN.chat||!String(x.a||'').startsWith('chat:')),noL=chatsAdmin().reduce((a,c)=>a+noLeidos(c),0);
  const nSol=clientes().reduce((a,c)=>a+(c.solProg?1:0)+(c.entrenador&&c.estado==='pendiente'?1:0),0);
- const TABS=[['inicio','Inicio',T.length],['solicitudes','Solicitudes',nSol],['clientes','Clientes',0],['mensajes','Mensajes',noL],['agenda','Agenda',0],['ejercicios','Ejercicios',0],['planes','Planes',0],['contenido','Contenido',0],['negocio','Negocio',0]];
- const body=tab==='inicio'?pInicioHTML(T):tab==='solicitudes'?pSolicitudesHTML():tab==='clientes'?pClientesHTML():tab==='mensajes'?panelChatHTML():tab==='agenda'?pAgendaHTML()+panelVideoHTML()+panelDirectosHTML():tab==='ejercicios'?pEjerciciosHTML():tab==='planes'?pPlanesHTML():tab==='contenido'?pContenidoHTML():pNegocioHTML()+((S.negSec||'resumen')==='resumen'?panelValoracionesHTML():'');
+ const TABS=[['inicio','Inicio',T.length],['solicitudes','Solicitudes',nSol],['clientes','Clientes',0],...(FN.chat?[['mensajes','Mensajes',noL]]:[]),...(FN.agenda?[['agenda','Agenda',0]]:[]),['ejercicios','Ejercicios',0],['planes','Planes',0],['contenido','Contenido',0],['negocio','Negocio',0]].filter(([k])=>k!=='negocio'||FN.negocio);
+ const body=tab==='inicio'?pInicioHTML(T):tab==='solicitudes'?pSolicitudesHTML():tab==='clientes'?pClientesHTML():tab==='mensajes'?panelChatHTML():tab==='agenda'?pAgendaHTML()+panelVideoHTML()+(FN.directos?panelDirectosHTML():''):tab==='ejercicios'?pEjerciciosHTML():tab==='planes'?pPlanesHTML():tab==='contenido'?pContenidoHTML():pNegocioHTML()+((S.negSec||'resumen')==='resumen'?panelValoracionesHTML():'');
  $app.innerHTML=topbar('')+`<main class="page panel">
   <div class="acc-head"><div><p class="eyebrow">Administración</p><h1>Hola, <span class="nombre-propio">${esc(CONTENIDO.entrenadora.nombre||'entrenadora')}</span></h1></div><button class="btn ghost sm" data-go="salir">Cerrar sesión</button></div>
   <nav class="ptabs" role="tablist" aria-label="Secciones del panel">${TABS.map(([k,t,n])=>`<button role="tab" aria-selected="${k===tab}" data-ptab="${k}">${t}${n?` <span class="pc-badge">${n}</span>`:''}</button>`).join('')}</nav>
@@ -2804,7 +2808,7 @@ function renderPanel(){
 /* ---------- Gestión de contenido ---------- */
 function getP(o,p){return p.split('.').reduce((a,k)=>a==null?a:a[k],o);}
 function setP(o,p,v){const ks=p.split('.'),last=ks.pop(),t=ks.reduce((a,k)=>a[k],o);t[last]=v;}
-const CSEC=[['programas','Programas'],['pilates','Entrena conmigo'],['sesiones','Sesiones guiadas'],['rutinas','Rutinas de la portada'],['personal','Entrenamiento personal, directos y ciclo'],['web','Sobre mí, testimonios y reto']];
+const CSEC=[['programas','Programas'],['pilates','Entrena conmigo'],['sesiones','Sesiones guiadas'],...(FN.rutinasPortada?[['rutinas','Rutinas de la portada']]:[]),['personal','Entrenamiento personal, directos y ciclo'],['web','Sobre mí, testimonios y reto']];
 function ci(path,label,tipo,ph){tipo=tipo||'txt';const v=getP(CONTENIDO,path),id='c_'+path.split('.').join('_');
  const val=tipo==='lineas'?(v||[]).join('\n'):tipo==='lista'?(v||[]).join(', '):(v==null?'':v);
  const ctrl=(tipo==='area'||tipo==='lineas')?`<textarea id="${id}" data-c="${path}" data-ct="${tipo}" rows="${tipo==='lineas'?4:3}" placeholder="${esc(ph||'')}">${esc(val)}</textarea>`
@@ -2824,7 +2828,7 @@ function cSesion(key,nombre){
 function pContenidoHTML(){
  const sec=S.csec||'programas',K=CONTENIDO;let body='';
  const verWeb=p=>`<label class="check-row c-web"><input type="checkbox" data-verweb="${p.id}" ${ocultoId(p.id)?'':'checked'}><span>Mostrar en la web</span></label>`;
- if(sec==='programas') body=K.programas.map((p,i)=>p.id==='pilates'?'':p.carpeta?det('p'+i,p.nombre+(ocultoId(p.id)?' (oculto)':''),verWeb(p)+`<div class="c-grid">${ci(`programas.${i}.nombre`,'Nombre de la carpeta')}</div>${ci(`programas.${i}.para`,'Descripción corta')}${p.carpeta.map((c,j)=>det(`p${i}-${j}`,c.nombre,cProg(`programas.${i}.carpeta.${j}`,c),c.precio)).join('')}`,`${p.carpeta.length} programas`):det('p'+i,p.nombre+(ocultoId(p.id)?' (oculto)':''),verWeb(p)+cProg(`programas.${i}`,p),p.precio)).join('');
+ if(sec==='programas') body=K.programas.map((p,i)=>p.id==='pilates'?'':p.carpeta?det('p'+i,p.nombre+(ocultoId(p.id)?' (oculto)':''),verWeb(p)+`<div class="c-grid">${ci(`programas.${i}.nombre`,'Nombre de la carpeta')}</div>${ci(`programas.${i}.para`,'Descripción corta')}${p.carpeta.map((c,j)=>det(`p${i}-${j}`,c.nombre+(ocultoId(c.id)?' (oculto)':''),verWeb(c)+cProg(`programas.${i}.carpeta.${j}`,c),c.precio)).join('')}`,`${p.carpeta.length} programas`):det('p'+i,p.nombre+(ocultoId(p.id)?' (oculto)':''),verWeb(p)+cProg(`programas.${i}`,p),p.precio)).join('');
  else if(sec==='pilates'){const i=K.programas.findIndex(p=>p.id==='pilates'),P=K.programas[i];
   body=`${P.carpeta.map((c,j)=>{const pa=`programas.${i}.carpeta.${j}`;return det(`pil${j}`,c.nombre,`<div class="c-grid">${ci(pa+'.nombre','Nombre del pack')}${ci(pa+'.precio','Precio','txt','Ej.: 29,99 €')}</div>${ci(pa+'.para','Descripción corta')}${ci(pa+'.descripcion','Descripción','area')}
    <div class="c-sub"><span class="lbl">Clases (la primera es la muestra gratis)</span>${c.clases.map((cl,k)=>`<div class="c-item"><div class="c-grid">${ci(`${pa}.clases.${k}.titulo`,`Clase ${k+1}`)}${ci(`${pa}.clases.${k}.minutos`,'Minutos')}${ci(`${pa}.clases.${k}.nivel`,'Nivel')}</div>${cdel(`${pa}.clases.${k}`,'Quitar clase')}</div>`).join('')}<div class="actions">${cadd(pa+'.clases','clase','Añadir clase')}</div></div>${cdel(`programas.${i}.carpeta.${j}`,'Eliminar este pack')}`,`${c.clases.length} clases · ${c.precio||'precio pendiente'}`);}).join('')}<div class="actions">${cadd(`programas.${i}.carpeta`,'pack','Añadir pack')}</div>`;}
@@ -2876,7 +2880,7 @@ function tplContenido(t,arrPath){
 function bindContenido(){
  const reC=()=>{const open=[...$app.querySelectorAll('details.c-det[open]')].map(d=>d.dataset.dk),y=window.scrollY;renderPanel();open.forEach(k=>{const d=$app.querySelector(`details.c-det[data-dk="${k}"]`);if(d) d.open=true;});window.scrollTo(0,y);};
  const st=document.getElementById('c-estado');
- const sync=()=>{PERSONAL_PASOS[0].campos.find(f=>f.id==='modalidad').opciones=CONTENIDO.personal.modalidades.map(m=>[m.id,m.nombre]);const ok=guardarContenido();if(st){st.textContent=ok?'Guardado':'No se ha podido guardar';st.hidden=false;clearTimeout(st._t);st._t=setTimeout(()=>{st.hidden=true;},2000);}};
+ const sync=()=>{PERSONAL_PASOS[0].campos.find(f=>f.id==='modalidad').opciones=CONTENIDO.personal.modalidades.filter(modVis).map(m=>[m.id,m.nombre]);const ok=guardarContenido();if(st){st.textContent=ok?'Guardado':'No se ha podido guardar';st.hidden=false;clearTimeout(st._t);st._t=setTimeout(()=>{st.hidden=true;},2000);}};
  $app.querySelectorAll('[data-csec]').forEach(b=>b.onclick=()=>{S.csec=b.dataset.csec;renderPanel();});
  $app.querySelectorAll('[data-verweb]').forEach(el=>el.onchange=()=>{const id=el.dataset.verweb,O=CONTENIDO.ocultos=(CONTENIDO.ocultos||[]).filter(x=>x!==id);if(!el.checked) O.push(id);sync();reC();});
  const cvp=document.getElementById('c-vp');if(cvp) cvp.onchange=()=>{CONTENIDO.mostrarPrecios=cvp.checked?'si':'no';sync();aplicarPrecios();reC();};
@@ -3282,6 +3286,7 @@ function negServiciosHTML(ej,D){
 const chatRoot=document.createElement('div');chatRoot.id='chat-root';document.body.appendChild(chatRoot);
 function nombreCliente(){return ((S.cuenta.auth&&S.cuenta.auth.nombre)||S.resp.general.nombre||(S.cuenta.solicitud&&S.cuenta.solicitud.nombre)||(S.cuenta.contacto&&S.cuenta.contacto.nombre)||'').trim();}
 function renderChat(){
+ if(!FN.chat){chatRoot.innerHTML='';return;}
  if(['paso','panel','player','sala','pago'].includes(S.pantalla)){chatRoot.innerHTML='';return;}
  const C=S.cuenta;
  const noLeido=C.mensajes.some(m=>m.de==='entrenadora'&&(!C.leido||m.fecha>C.leido));
@@ -3328,7 +3333,7 @@ function eligeGratis(){const C=S.cuenta;if(S.sesion!=='cliente'||!C.auth) return
 function puedeVer(d){const C=S.cuenta;if(d.tipo==='gratis') return eligeGratis();return C.reservas.includes(d.id)||!!(C.dirPlan&&C.dirPlan.restantes==null);}
 function horarioDir(){const D=CONTENIDO.directo;D.horario=D.horario||JSON.parse(JSON.stringify(CONTENIDO_ORIG.directo.horario));return D.horario;}
 function fechaAuto(lunISO,dia){const d=new Date(lunISO+'T00:00:00');d.setDate(d.getDate()+(+dia||0));return isoDe(d);}
-function generarDirectos(){
+function generarDirectos(){if(!FN.directos) return;
  const C=S.cuenta,H=horarioDir(),hoy=hoyISO(),lun=lunesDe(hoy);C.dirBorrados=C.dirBorrados||[];let cambio=false;
  ['gratis','pago'].forEach(t=>{const h=H[t];
   // actualiza las clases automáticas futuras si cambia el horario
@@ -3488,6 +3493,7 @@ function testimoniosHTML(){
 /* ---------- Sobre mí ---------- */
 function cifrasHTML(T){return '';return `<div class="cifras">${T.cifras.map(c=>`<div class="cifra"><b>${c.valor?esc(c.valor):'<span class="ph">—</span>'}</b><span>${esc(c.texto||'')}</span></div>`).join('')}</div>`;}
 function espBtn(e){if(e.destino&&ocultoId(e.destino)) return '';const d=e.destino||'',P=CONTENIDO.programas.find(p=>p.id===d);
+ if(d==='directo'&&!FN.directos) return `<span class="esp">${esc(e.nombre)}</span>`;
  const at=d==='personal'?'data-go="personal"':d==='directo'?'data-nav="directo"':P&&P.carpeta?`data-carpeta="${d}"`:todosProgramas().some(p=>p.id===d)?`data-prog="${d}"`:'';
  return at?`<button class="esp" ${at}>${esc(e.nombre)}</button>`:`<span class="esp">${esc(e.nombre)}</span>`;}
 /* --- Variantes de «Sobre mí» (de prueba: elige una y se quitan las demás) --- */
@@ -3529,7 +3535,7 @@ function renderSobre(){
 }
 /* ---------- Pasarela de pago (SIMULADA: no cobra nada) ---------- */
 // En la versión real, este paso se sustituye por la pasarela de verdad (Stripe, Redsys…). La app solo guarda el resultado.
-function irPago(pedido,ok){S.pago={...pedido,fase:'form',metodo:S.cuenta.tarjeta?'guardada':'tarjeta',err:''};S.pagoOk=ok;S.pagoVolver=S.pantalla;ir('pago');}
+function irPago(pedido,ok){if(!FN.pagos){ok();return;}S.pago={...pedido,fase:'form',metodo:S.cuenta.tarjeta?'guardada':'tarjeta',err:''};S.pagoOk=ok;S.pagoVolver=S.pantalla;ir('pago');}
 const luhn=n=>{let s=0,d=false;for(let i=n.length-1;i>=0;i--){let x=+n[i];if(d){x*=2;if(x>9) x-=9;}s+=x;d=!d;}return n.length>=13&&s%10===0;};
 const marcaT=n=>/^4/.test(n)?'Visa':/^(5[1-5]|2[2-7])/.test(n)?'Mastercard':/^3[47]/.test(n)?'American Express':'Tarjeta';
 function renderPago(){
@@ -3580,8 +3586,8 @@ function renderPago(){
    guardarCuenta();renderPago();window.scrollTo(0,0);},P.metodo==='bizum'?1800:1100);};
 }
 /* ---------- Pestañas de Mi cuenta: ciclo, Strava y pagos ---------- */
-const CTABS=[['entreno','Mi entrenamiento'],['ciclo','Mi ciclo'],['strava','Strava'],['pagos','Pagos']];
-function ctabsHTML(){const t=S.ctab||'entreno';return `<nav class="ctabs" role="tablist" aria-label="Mi cuenta">${CTABS.map(([k,n])=>`<button role="tab" aria-selected="${k===t}" data-ctab="${k}">${n}</button>`).join('')}</nav>`;}
+const CTABS=[['entreno','Mi entrenamiento'],['ciclo','Mi ciclo'],['strava','Strava'],['pagos','Pagos']].filter(([k])=>k==='entreno'||FN[k]);
+function ctabsHTML(){if(CTABS.length<2) return '';const t=S.ctab||'entreno';return `<nav class="ctabs" role="tablist" aria-label="Mi cuenta">${CTABS.map(([k,n])=>`<button role="tab" aria-selected="${k===t}" data-ctab="${k}">${n}</button>`).join('')}</nav>`;}
 // --- Mi ciclo ---
 const FASES={menstrual:'Menstrual',folicular:'Folicular',ovulatoria:'Ovulatoria',lutea:'Lútea'};
 const SINT=['Dolor menstrual','Cansancio','Hinchazón','Cambios de ánimo','Dolor de cabeza','Sensibilidad en el pecho','Más energía','Duermo peor'];
@@ -3760,6 +3766,8 @@ function render(){
  if(S.pantalla==='cuenta'&&S.sesion!=='cliente'){if(S.sesion==='admin') S.pantalla='panel';else{S.despues='cuenta';S.pantalla='login';S.loginTab=S.loginTab==='registro'&&S.lastP==='login'?'registro':'entrar';}}
  if(S.pantalla==='panel'&&S.sesion!=='admin'){S.despues='panel';S.pantalla='login';S.loginTab='entrar';}
  if(S.pantalla==='pago'&&S.sesion!=='cliente'){S.despues='pago';S.pantalla='login';S.loginTab='entrar';}
+ if((S.pantalla==='programa'&&progOculto(S.prog))||(['resEmbarazo','resPostparto'].includes(S.pantalla)&&progOculto(S.pantalla==='resEmbarazo'?'embarazo':'postparto'))||(S.pantalla==='paso'&&['embarazo','postparto'].includes(S.q)&&progOculto(S.q))) S.pantalla='inicio';
+ if((!FN.rutinasPortada&&S.pantalla==='entreno')||(!FN.directos&&['directo','sala'].includes(S.pantalla))||(!FN.pagos&&S.pantalla==='pago')||(S.pantalla==='carpeta'&&ocultoId(S.carp))) S.pantalla='inicio';
  S.lastP=S.pantalla;
  ({login:renderLogin,inicio:renderInicio,entreno:renderEntreno,programa:renderPrograma,carpeta:renderCarpeta,paso:renderPaso,resultado:renderResultado,resRunners:renderResRunners,resEmbarazo:renderResEmbarazo,resPostparto:renderResPostparto,resOpos:renderResOpos,resQ:renderResQ,cuenta:renderCuenta,personal:renderPersonal,resPersonal:renderResPersonal,panel:renderPanel,directo:renderDirecto,precios:renderPrecios,player:renderPlayer,sala:renderSala,sobre:renderSobre,pago:renderPago})[S.pantalla]();if(S.pantalla!=='player') clearInterval(TICK);renderChat();}
 
@@ -3792,12 +3800,13 @@ function renderInicio(){
   <section class="hero hero-grid">
    <div style="display:grid;gap:16px">
     <h1>Entrena con sentido, <em>en el tiempo que tienes</em></h1>
-    <p>Planificación de verdad, sin necesidad de ir a clases colectivas. Empieza con los vídeos y una rutina completa.</p>
-    <div class="actions"><button class="btn" data-go="entreno">Prueba una rutina</button><button class="btn ghost" data-go="videos">Ver vídeos</button></div>
+    <p>Planificación de verdad, sin necesidad de ir a clases colectivas.${FN.rutinasPortada?' Empieza con los vídeos y una rutina completa.':''}</p>
+    <div class="actions">${FN.rutinasPortada?'<button class="btn" data-go="entreno">Prueba una rutina</button><button class="btn ghost" data-go="videos">Ver vídeos</button>':'<button class="btn" data-nav="programas">Ver programas</button><button class="btn ghost" data-go="personal">Entrenador personal</button>'}</div>
    </div>
-   <figure class="hero-photo"><img src="${FOTO}" alt="Iria Castro, entrenadora"><button class="hero-play" type="button"><span class="mini-play" aria-hidden="true"></span>vídeo de presentación</button></figure>
+   <figure class="hero-photo"><img src="${FOTO}" alt="Iria Castro, entrenadora"></figure>
   </section>
 
+${FN.rutinasPortada?`
   <section class="sec" id="entrenos" aria-labelledby="t-videos">
    <div><p class="free">Para empezar</p><h2 class="sec-t" id="t-videos">Rutinas</h2></div>
    ${filtrosHTML()}
@@ -3811,6 +3820,7 @@ function renderInicio(){
    <button class="btn" data-go="entreno">Empezar rutina</button>
   </section>
 
+`:''}
   <section class="sec" id="programas" aria-labelledby="t-prog">
    <div><p class="eyebrow">Programas</p><h2 class="sec-t" id="t-prog">Planes para objetivos concretos</h2><p class="sec-sub">Programas ya diseñados para personas sin lesiones ni necesidades especiales.</p></div>
    <div class="packs">${CONTENIDO.programas.filter(p=>!ocultoId(p.id)).map(packCard).join('')}</div>
@@ -3852,11 +3862,12 @@ function bindFiltros(){
  });
 }
 function packCard(p){
+ if(p.carpeta){const vis=p.carpeta.filter(h=>!ocultoId(h.id));if(!vis.length) return '';p={...p,carpeta:vis};}
  if(p.carpeta) return `<article class="pack"><div class="cover"><b>${esc(p.nombre)}</b></div><div class="pb">
   <p>${esc(p.para)}</p>
   <ul class="prog-list">${p.carpeta.map(h=>`<li><b>${esc(h.nombre)}</b></li>`).join('')}</ul>
   ${p.carpeta[0].precio?`<span class="price">desde ${esc(p.carpeta[0].precio)}</span>`:''}
-  <button class="btn sm" data-carpeta="${p.id}">Ver ${p.carpeta.length} ${p.id==='pilates'?'packs':'programas'}</button></div></article>`;
+  <button class="btn sm" data-carpeta="${p.id}">Ver ${p.carpeta.length} ${p.id==='pilates'?(p.carpeta.length===1?'pack':'packs'):(p.carpeta.length===1?'programa':'programas')}</button></div></article>`;
  return `<article class="pack"><div class="cover"><b>${esc(p.nombre)}</b></div><div class="pb">
   <p>${esc(p.para)}</p>
   ${p.clases?`<p class="muestra-txt">Incluye una clase de muestra gratis</p><div class="specs"><span><b>${p.clases.length}</b>clases</span><span><b>1</b>pago único</span><span><b>∞</b>acceso para siempre</span></div>`:`<div class="specs"><span><b>${p.sesiones?esc(p.sesiones):'–'}</b>sesiones</span><span><b>${p.semanas?esc(p.semanas):'–'}</b>semanas</span><span><b>${p.nivel?esc(p.nivel):'–'}</b>nivel</span></div>`}
@@ -3870,7 +3881,7 @@ function renderCarpeta(){
  <main class="page">
   <button class="back" data-nav="programas">← Todos los programas</button>
   <div><p class="eyebrow">Programas</p><h1>${esc(c.nombre)}</h1><p class="sec-sub" style="margin-top:8px">${esc(c.para)}</p></div>
-  <div class="packs">${c.carpeta.map(packCard).join('')}</div>
+  <div class="packs">${c.carpeta.filter(x=>!ocultoId(x.id)).map(packCard).join('')}</div>
  </main>`;
  bindGo();
 }
@@ -4298,8 +4309,8 @@ function renderResultado(){
 }
 /* --- Cuentas de prueba (solo en el prototipo) --- */
 const DEMO_PASS='demo1234';
-const DEMO_USERS=[['lucia','Lucía Martín','Runners · 10K'],['marta','Marta Gómez','Mujer · Embarazo'],['carmen','Carmen Ruiz','Entrenamiento personal · Online premium'],['sara','Sara López','Entrena conmigo · Pack 1'],['paula','Paula Díaz','Fuerza + directos mensual'],['elena','Elena Sánchez','Entrenamiento híbrido (pendiente de enviar)'],['nerea','Nerea Fernández','Personal por videollamada (pendiente)']];
-function demoLoginHTML(){return `<section class="demo-login"><b>Cuentas de prueba</b><p class="sec-sub">Solo en el prototipo. Contraseña de todas: <b>${DEMO_PASS}</b></p>
+const DEMO_USERS=[['lucia','Lucía Martín','Runners · 10K'],['marta','Marta Gómez','Mujer · Embarazo'],['carmen','Carmen Ruiz','Entrenamiento personal · Online premium'],['sara','Sara López','Entrena conmigo · Pack 1'],['paula','Paula Díaz',FN.directos?'Fuerza + directos mensual':'Entrenamiento de fuerza'],['elena','Elena Sánchez','Entrenamiento híbrido (pendiente de enviar)'],['nerea','Nerea Fernández','Personal por videollamada (pendiente)']];
+function demoLoginHTML(){if(!DEMO_ON) return '';return `<section class="demo-login"><b>Cuentas de prueba</b><p class="sec-sub">Solo en el prototipo. Contraseña de todas: <b>${DEMO_PASS}</b></p>
  <div class="demo-list">${DEMO_USERS.map(([u,n,p])=>`<button class="demo-u" data-demo-login="${u}@demo.castro|${DEMO_PASS}"><b>${esc(n)}</b><span>${esc(p)}</span></button>`).join('')}<button class="demo-u adm" data-demo-login="entrenadora|castro2026"><b>Entrenadora (tú)</b><span>Panel de administración</span></button></div></section>`;}
 function sembrarDemo(forzar){
  if(DB.demo&&!forzar) return;
@@ -4315,9 +4326,9 @@ function sembrarDemo(forzar){
   C.valor={'2-2':{estrellas:5,com:'Las series me han venido genial',fecha:t(-8),titulo:'Sesión 2 · semana 2',visto:true}};
   C.strava={desde:d(-16),ejemplo:true,actividades:stravaEjemplo()};C.carrera=d(40);
   C.mensajes=[{de:'cliente',txt:'¡Hola Iria! Esta semana he hecho todas las sesiones.',fecha:t(-6)},{de:'entrenadora',txt:'¡Genial, Lucía! Sigue así.',fecha:t(-6)},{de:'cliente',txt:'¿Puedo cambiar la tirada larga al domingo?',fecha:t(-1)}];});
- crear('marta','Marta Gómez',C=>{C.alta=d(-9);C.prog={id:'embarazo',sub:'t2'};C.inicio=isoDe(lunesDe(d(-9)));C.hechasFecha={};sesiones(C,2,3,diasEntre(hoy,C.inicio));C.fpp=d(120);
-  pago(C,'Mujer · Embarazo','Programas',precioDe('embarazo'),-9,'mensual');
-  C.regEmb=[{sem:22,fecha:t(-2),lum:'no',lumTxt:'',hin:'si',vb:'si'}];C.rpe={'1-1':{rpe:4,fecha:t(-9)},'1-2':{rpe:4,fecha:t(-7)}};
+ crear('marta','Marta Gómez',C=>{C.alta=d(-9);C.prog={id:'hibrido'};C.inicio=isoDe(lunesDe(d(-9)));C.hechasFecha={};sesiones(C,2,3,diasEntre(hoy,C.inicio));
+  pago(C,'Entrenamiento híbrido','Programas',precioDe('hibrido'),-9,'mensual');
+  C.rpe={'1-1':{rpe:4,fecha:t(-9)},'1-2':{rpe:5,fecha:t(-7)}};
   C.mensajes=[{de:'cliente',txt:'Hola, ¿es normal notar más cansancio esta semana?',fecha:t(-2)}];});
  crear('carmen','Carmen Ruiz',C=>{C.alta=d(-40);C.entrenador=true;C.estado='activo';C.fecha=t(-40);
   C.solicitud={nombre:'Carmen',modalidad:'premium',lesion:'no',parq:[false,false,false,false],equipo:[]};
@@ -4326,12 +4337,12 @@ function sembrarDemo(forzar){
   C.registros=[{semana:1,fecha:t(-30),sens:4,rpe:6,mol:'no',molTxt:'',com:''},{semana:2,fecha:t(-23),sens:4,rpe:7,mol:'no',molTxt:'',com:''},{semana:3,fecha:t(-16),sens:3,rpe:8,mol:'si',molTxt:'Algo de molestia en el hombro',com:''},{semana:4,fecha:t(-2),sens:4,rpe:6,mol:'no',molTxt:'',com:'Mejor esta semana'}];C.regRevisado=3;
   const cy={dias:{},duracion:29,regla:5,hormonal:false,compartir:true,desde:d(-60)};[-58,-57,-56,-55,-29,-28,-27,-26,-25].forEach(n=>{cy.dias[d(n)]={regla:true};});cy.dias[d(-3)]={sint:['Cansancio','Hinchazón']};C.ciclo=cy;
   C.mensajes=[{de:'entrenadora',txt:'Carmen, ¿cómo va el hombro?',fecha:t(-15)},{de:'cliente',txt:'Mucho mejor, gracias.',fecha:t(-14)}];});
- crear('sara','Sara López',C=>{C.alta=d(-12);C.packs=['pilates-1'];C.hechas={'pilates-1-c0':true,'pilates-1-c1':true};C.hechasFecha={'pilates-1-c0':d(-11),'pilates-1-c1':d(-5)};
-  pago(C,'Entrena conmigo · Pack 1','Entrena conmigo',precioDe('pilates-1'),-12,'unico');});
+ crear('sara','Sara López',C=>{C.alta=d(-12);C.prog={id:'runners',sub:'5k'};C.inicio=isoDe(lunesDe(d(-12)));C.hechasFecha={};sesiones(C,2,3,diasEntre(hoy,C.inicio));
+  pago(C,'Runners · 5K','Programas',precioDe('runners'),-12,'mensual');});
  crear('paula','Paula Díaz',C=>{C.alta=d(-24);C.prog={id:'fuerza'};C.inicio=isoDe(lunesDe(d(-24)));C.hechasFecha={};sesiones(C,3,3,diasEntre(hoy,C.inicio));
   pago(C,'Entrenamiento de fuerza','Programas',precioDe('fuerza'),-24,'mensual');
-  C.dirPlan={id:'mensual',nombre:'Mensual',restantes:null};pago(C,'Directos · Mensual','Directos',(CONTENIDO.directo.tarifas.find(x=>x.id==='mensual')||{}).precio,-20,'mensual');
-  conCuenta(C,generarDirectos);C.reservas=['gratis','pago'].map(tp=>(C.directos.find(x=>x.tipo===tp&&dirEstado(x)==='programada')||{}).id).filter(Boolean);
+  if(FN.directos){C.dirPlan={id:'mensual',nombre:'Mensual',restantes:null};pago(C,'Directos · Mensual','Directos',(CONTENIDO.directo.tarifas.find(x=>x.id==='mensual')||{}).precio,-20,'mensual');
+  conCuenta(C,generarDirectos);C.reservas=['gratis','pago'].map(tp=>(C.directos.find(x=>x.tipo===tp&&dirEstado(x)==='programada')||{}).id).filter(Boolean);}
   const run=n=>'r'+n;C.cargas=[];[[-24,20,10,'justo'],[-17,20,10,'facil'],[-10,22.5,9,'justo'],[-3,22.5,10,'facil']].forEach(([dia,p,r,e],i)=>[1,2,3].forEach(se=>C.cargas.push({ej:'n:sentadilla goblet',nombre:'Sentadilla goblet',serie:se,peso:p,reps:r,esf:e,run:run(i),fecha:t(dia),ses:'x'})));
   C.rpe={'3-1':{rpe:7,fecha:t(-10)},'3-2':{rpe:8,fecha:t(-8)},'4-1':{rpe:6,fecha:t(-3)}};
   C.valor={'3-2':{estrellas:2,com:'Se me hizo demasiado larga',fecha:t(-8),titulo:'Sesión 2 · semana 3',visto:false}};});
@@ -4341,11 +4352,22 @@ function sembrarDemo(forzar){
   C.solicitud={nombre:'Nerea',modalidad:'videollamada',lesion:'si',lesionDetalle:'Molestias en la rodilla derecha al correr',parq:[false,false,false,false],equipo:[]};
   C.mensajes=[{de:'cliente',txt:'¡Hola! Acabo de enviarte mi solicitud. ¿Cuándo podríamos empezar?',fecha:t(0)}];});
  S.cuenta=prev;DB.demo=true;dbGuardar();}
-sembrarDemo();
+// Cuentas de demo: apagadas. Con DEMO_ON=true se vuelven a crear (Lucía, Marta, Carmen…).
+const DEMO_ON=false;
+if(DEMO_ON) sembrarDemo(); else (function quitarDemo(){const ids=Object.keys(DB.cuentas).filter(id=>DB.cuentas[id].demo);
+ if(!ids.length&&DB.demo) return;
+ ids.forEach(id=>{delete DB.cuentas[id];delete OBJ[id];});
+ (DB.shared.huecos||[]).forEach(h=>{if(h.reserva&&String(h.reserva).startsWith('demo-')) h.reserva=null;});
+ if(DB.actual&&String(DB.actual).startsWith('demo-')) DB.actual=null;
+ DB.demo=true;dbGuardar();})();
 (function semillaEntrevistas(){if(DB.demoEnt) return;const H=DB.shared.huecos||(DB.shared.huecos=[]),hoy=hoyISO();
  [[1,'18:00'],[1,'18:30'],[2,'19:00'],[3,'12:00']].forEach(([n,h],i)=>{const f=sumarDias(hoy,n);if(!H.some(x=>x.fecha===f&&x.hora===h)) H.push({id:'ent'+i+Date.now().toString(36),fecha:f,hora:h,dur:'20',reserva:null,tipo:'entrevista'});});
  const ne=DB.cuentas['demo-nerea'];if(ne){const x=H.find(z=>z.tipo==='entrevista'&&!z.reserva);if(x) x.reserva='demo-nerea';}
  DB.demoEnt=true;dbGuardar();})();
+(function migrarMujer(){if(!CONTENIDO.migSimple){const O=CONTENIDO.ocultos=CONTENIDO.ocultos||[];['embarazo','postparto','mujer','pilates'].forEach(x=>{if(!O.includes(x)) O.push(x);});CONTENIDO.migMujer=true;CONTENIDO.migSimple=true;guardarContenido();}
+ const m=DB.cuentas['demo-marta'];if(m&&m.prog&&['embarazo','menopausia'].includes(m.prog.id)){m.prog={id:'hibrido'};m.fpp=null;m.regEmb=[];m.avisoTri=null;(m.pagos||[]).forEach(p=>{if(/Embarazo|Menopausia/.test(p.concepto)) p.concepto='Entrenamiento híbrido';});(m.compras||[]).forEach(p=>{if(/Embarazo|Menopausia/.test(p.concepto)) p.concepto='Entrenamiento híbrido';});delete OBJ['demo-marta'];dbGuardar();}})();
+(function migrarSara(){const x=DB.cuentas['demo-sara'];if(x&&!x.prog&&(x.packs||[]).length){x.packs=[];x.hechas={};x.hechasFecha={};x.prog={id:'runners',sub:'5k'};x.inicio=isoDe(lunesDe(sumarDias(hoyISO(),-12)));[x.pagos,x.compras].forEach(L=>(L||[]).forEach(p=>{p.concepto='Runners · 5K';p.linea='Programas';}));delete OBJ['demo-sara'];dbGuardar();}})();
+(function migrarPaula(){const x=DB.cuentas['demo-paula'];if(!FN.directos&&x&&x.dirPlan){x.dirPlan=null;x.reservas=[];x.pagos=(x.pagos||[]).filter(p=>p.linea!=='Directos');x.compras=(x.compras||[]).filter(p=>p.linea!=='Directos');delete OBJ['demo-paula'];dbGuardar();}})();
 (function migrarElena(){const e=DB.cuentas['demo-elena'];if(e&&e.solProg&&['guardiacivil','policia'].includes(e.solProg.id)){e.solProg.id='hibrido';(e.pagos||[]).forEach(p=>{if(/Opositores/.test(p.concepto)) p.concepto='Entrenamiento híbrido';});delete OBJ['demo-elena'];dbGuardar();}})();
 render();
 </script>
