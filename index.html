@@ -991,6 +991,14 @@ button.esp{cursor:pointer}button.esp:hover{background:var(--accent)}
 .pl-semanas{display:grid;gap:10px}
 .pl-sem{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
 .pl-sem .link{justify-self:start;font-size:.88rem}
+.pl-sem.pub{border-color:var(--accent-ink)}
+.pl-sem-h{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pl-prev{display:grid;gap:10px;padding:12px;border-radius:12px;background:var(--surface)}
+.pl-prev-s{display:grid;gap:4px}.pl-prev-s ol{margin:0;padding-left:1.2em}
+.pl-copiar{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:12px}.pl-copiar .field{flex:1;min-width:220px}
+.pl-dest select{max-width:480px}
+.week-prox .wk-prox{padding:14px 16px;display:flex;justify-content:space-between;gap:10px;color:var(--muted)}
+.ses-nota{display:block;font-size:.85rem;color:var(--muted)}
 .pl-ses{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
 #pl-prog .pl-sem select{background:var(--surface)}
 .ses-prev{margin-top:4px;font-size:.88rem}
@@ -1193,9 +1201,9 @@ function migrarTarifas(){try{const T=CONTENIDO.directo.tarifas;if(T.some(t=>/^bo
 try{const x=JSON.parse(localStorage.getItem('cv-contenido'));if(x&&typeof x==='object') Object.keys(x).forEach(k=>{if(k in CONTENIDO) CONTENIDO[k]=x[k];});}catch(e){}
 migrarTarifas();
 (()=>{const pc=CONTENIDO.programas.find(x=>x.id==='pilates');if(pc&&pc.nombre==='Pilates') pc.nombre='Entrena conmigo';if(pc&&/pilates/i.test(pc.para||'')) pc.para=CONTENIDO_ORIG.programas.find(x=>x.id==='pilates').para;})();
-function guardarContenido(){let ok=true;try{localStorage.setItem('cv-contenido',JSON.stringify(CONTENIDO));}catch(e){ok=false;}contenidoSubir();return ok;}
+function guardarContenido(){let ok=true;try{localStorage.setItem('cv-contenido',JSON.stringify(CONTENIDO));}catch(e){ok=false;}contenidoSubir();if(typeof planesSubir==='function') planesSubir();return ok;}
 /* ---------- Contenido del panel en Supabase (tabla contenido_web + archivos en Storage) ---------- */
-const CONT_LOCAL=['migMujer','migSimple'];   // marcas internas de este navegador: no se suben
+const CONT_LOCAL=['migMujer','migSimple','migUUID','ejercicios','plantillas','planes','publicadas'];   // estos van en sus propias tablas o son solo de este navegador   // marcas internas de este navegador: no se suben
 let CONT_SUBIDO={},CONT_T=null,CONT_LISTO=false;
 function contenidoSubir(){if(!SB||S.sesion!=='admin'||!CONT_LISTO) return;clearTimeout(CONT_T);CONT_T=setTimeout(async()=>{
  const filas=Object.keys(CONTENIDO).filter(k=>!CONT_LOCAL.includes(k)).map(k=>({clave:k,valor:CONTENIDO[k]??null,j:JSON.stringify(CONTENIDO[k]??null)})).filter(f=>CONT_SUBIDO[f.clave]!==f.j);
@@ -1212,8 +1220,9 @@ async function contenidoBajar(){if(!SB) return;
  }catch(e){console.warn('Supabase contenido:',e&&e.message||e);setTimeout(contenidoBajar,20000);}}   // sin conexión: no se sube nada hasta poder comparar con la nube
 const MEDIA_NUBE=k=>!/^tec-/.test(k);   // los vídeos de técnica de los clientes no van al espacio público
 // Sube una vez las fotos y vídeos que la entrenadora ya tenía guardados en este navegador
+let MIG_MEDIA=null;   // cambio de nombre de los vídeos al pasar a los ids de Supabase
 function mediaSubirTodo(){if(!SB) return;try{if(localStorage.getItem('cv-media-subido')) return;}catch(e){}
- mediaDB().then(db=>{const st=db.transaction('m').objectStore('m'),r=st.getAllKeys();r.onsuccess=async()=>{
+ Promise.resolve(MIG_MEDIA).then(()=>mediaDB()).then(db=>{const st=db.transaction('m').objectStore('m'),r=st.getAllKeys();r.onsuccess=async()=>{
   for(const k of (r.result||[]).filter(k=>MEDIA_NUBE(String(k)))){const b=await new Promise(ok=>{const g=db.transaction('m').objectStore('m').get(k);g.onsuccess=()=>ok(g.result);g.onerror=()=>ok(null);});
    if(b){const {error}=await SB.storage.from('contenido').upload(String(k),b,{upsert:true,contentType:b.type||undefined});if(error){console.warn('Supabase archivo:',error.message);return;}}}
   try{localStorage.setItem('cv-media-subido','1');}catch(e){}};}).catch(()=>{});}
@@ -1729,6 +1738,7 @@ function zonaCliente(){
    <div class="actions"><button class="btn" id="b-reg" ${R.sens&&R.mol?'':'disabled'}>Enviar registro</button></div>
    ${C.registros.length?`<div class="regs">${C.registros.slice().reverse().map(x=>`<div class="reg"><b>Semana ${x.semana}</b><span>${SENS[x.sens-1]} · RPE ${x.rpe} · Molestias: ${x.mol==='si'?esc(x.molTxt||'sí'):'no'}</span></div>`).join('')}</div>`:''}
   </section>`:''}
+  ${activo?sesionesPersonalHTML():''}
   ${activo?tecnicaClienteHTML():''}
   ${FN.chat?`<section class="acc-card"><p class="eyebrow">Mensajes</p><h2>Habla con tu entrenadora</h2>${mensajesHTML('cliente')}</section>`:''}`;
 }
@@ -1760,6 +1770,7 @@ function bindTecnica(re){
  $app.querySelectorAll('[data-tec-ok]').forEach(b=>b.onclick=()=>{const id=b.dataset.tecOk,t=S.cuenta.tecnica.find(x=>x.id===id),txt=g('tc-'+id).value.trim();
   if(!txt){const e=g('te-'+id);e.textContent='Escribe la corrección.';e.hidden=false;return;}
   Object.assign(t,{estado:'corregido',corr:txt,demo:(g('td-'+id)||{}).value||'',fechaCorr:new Date().toISOString()});
+  if(SB&&t.sb) SB.from('video_tecnica').update({estado:'corregido',correccion:txt,id_ejercicio:ES_UUID(t.demo)?t.demo:null}).eq('id_video_tecnica',t.sb).then(({error})=>{if(error) console.warn('Supabase técnica:',error.message);});
   S.cuenta.mensajes.push({de:'entrenadora',txt:`He revisado tu vídeo de «${t.ej}»: ${txt}`,fecha:new Date().toISOString()});guardarCuenta();re();});
 }
 function bindZonaCliente(){
@@ -1777,8 +1788,6 @@ function bindZonaCliente(){
  bindMensajes(renderCuenta);
 }
 function estructuraProg(p,sub){const semanas=parseInt((sub&&sub.semanas)||p.semanas)||4,total=parseInt(p.sesiones)||semanas*3;return {semanas,total,porSemana:Math.max(1,Math.ceil(total/semanas))};}
-function plantillaDe(key){const c=S.cuenta.prog;if(!c||!key) return null;const k=c.sub?c.id+'/'+c.sub:c.id,[w,n]=String(key).split('-').map(Number),P=(CONTENIDO.planes||{})[k],id=P&&P[w-1]&&P[w-1][n-1];
- return id?(CONTENIDO.plantillas||[]).find(x=>x.id===id)||null:null;}
 const nEjPl=pl=>pl.bloques.reduce((a,b)=>a+b.ejercicios.length,0);
 function infoPrograma(){
  const c=S.cuenta.prog;if(!c) return null;
@@ -1824,6 +1833,7 @@ function hoyHTML(I){
  if(S.cuenta.pausa) return '';
  const h=hoySesion(I);if(!h) return '';
  if(h.descanso) return `<section class="hoy-card"><div><p class="eyebrow">Hoy</p><h2>Día de descanso</h2><p class="sec-sub">Recuperar también es entrenar.</p></div></section>`;
+ if(!semPublicada(progK(),h.sem)) return `<section class="hoy-card"><div><p class="eyebrow">Hoy</p><h2>Semana ${h.sem} en preparación</h2><p class="sec-sub">Tu entrenadora está terminando las sesiones de esta semana. En cuanto las publique aparecerán aquí.</p></div></section>`;
  const d=S.cuenta.hechas[h.key];
  return `<section class="hoy-card"><div><p class="eyebrow">Hoy</p><h2>Sesión ${h.n} · semana ${h.sem}</h2><p class="sec-sub">${d?(d==='exp'?'Hecha en versión exprés. ¡Bien!':'Hecha. ¡Bien!'):(()=>{const pl=plantillaDe(h.key);return pl&&nEjPl(pl)?`${esc(pl.nombre)} · ${nEjPl(pl)} ejercicios`:'Tu sesión de hoy te espera.';})()}</p></div>
   ${d?'':`<div class="actions"><button class="btn" data-play="${h.key}">Empezar sesión</button><button class="btn ghost" data-expres="${h.key}">Hoy tengo poco tiempo</button><button class="btn ghost" data-ses="${h.key}">Marcar como hecha</button></div>`}
@@ -2006,6 +2016,7 @@ function bindValorarForm(id,v){
 function tituloClave(k){
  const pk=todosProgramas().find(p=>p.clases&&k.startsWith(p.id+'-c'));
  if(pk){const i=+k.slice(pk.id.length+2),c=pk.clases[i]||{};return `Entrena conmigo · ${pk.nombre} · ${c.titulo||`Clase ${i+1}`}`;}
+ if(k[0]==='P'){const [w,n]=k.slice(1).split('-');return `Sesión ${n} · semana ${w} · plan personal`;}
  const [w,n]=k.split('-');return `Sesión ${n} · semana ${w}`;
 }
 function guardarValor(k,v,tit){S.cuenta.valor[k]={estrellas:v.estrellas,com:(v.com||'').trim(),fecha:new Date().toISOString(),titulo:tit||tituloClave(k)};}
@@ -2139,7 +2150,8 @@ function calendarioHTML(I){
  let semProg=null;
  if(I&&!I.p.clases&&!C.pausa){
   const ini=lunesDe(C.inicio||hoy);semProg=Math.round((lun-ini)/6048e5)+1;
-  if(semProg>=1&&semProg<=I.semanas){
+  if(semProg>=1&&semProg<=I.semanas&&!semPublicada(progK(),semProg)) items[0].push('<span class="cal-it">En preparación</span>');
+  else if(semProg>=1&&semProg<=I.semanas){
    sesionesSemana(I,semProg).forEach(x=>{const d=!!C.hechas[x.key];
     items[x.dia].push(`<button class="cal-it ses ${d?'done':''} ${S.calSel===x.key?'sel':''}" data-calsel="${x.key}" aria-expanded="${S.calSel===x.key}"><span class="cal-dot"></span>Sesión ${x.n}${x.movida?' ↻':''}</button>`);});}
  }
@@ -2295,6 +2307,9 @@ function bindEmbarazo(){
  const bt=document.getElementById('b-tri-ok');if(bt) bt.onclick=()=>{S.cuenta.avisoTri=null;guardarCuenta();re();};
  const bp=document.getElementById('b-postparto');if(bp) bp.onclick=()=>{if(S.cuenta.fpp&&!S.resp.postparto.fechaParto&&S.cuenta.fpp<=hoyISO()) S.resp.postparto.fechaParto=S.cuenta.fpp;ir('paso',{paso:0,q:'postparto',r:S.resp.postparto});};
 }
+function sesFilaHTML(key,n,w){const C=S.cuenta,d=!!C.hechas[key],ex=C.hechas[key]==='exp',pl=plantillaDe(key);
+ return `<li class="ses-row ses-row3 ${d?'done':''}"><button class="check" data-ses="${key}" aria-pressed="${d}" aria-label="Marcar sesión ${n} de la semana ${w} como hecha"></button><div><b>Sesión ${n}</b>${ex?' <span class="tag-exp">exprés</span>':''}${C.rpe&&C.rpe[key]?` <span class="tag-exp">RPE ${C.rpe[key].rpe}</span>`:''}${C.valor[key]?` <span class="stars-mini" aria-label="${C.valor[key].estrellas} de 5">${'★'.repeat(C.valor[key].estrellas)}${'☆'.repeat(5-C.valor[key].estrellas)}</span>`:''}${pl&&nEjPl(pl)?`<div class="st">${esc(pl.nombre)} · ${nEjPl(pl)} ejercicios</div><details class="ses-prev"><summary>Ver ejercicios</summary>${pl.nota?`<p class="pl-enota">${esc(pl.nota)}</p>`:''}${pl.bloques.filter(b=>b.ejercicios.length).map(b=>`<span class="lbl">${esc(b.nombre)}</span><ol>${b.ejercicios.map(x=>`<li>${esc(x.nombre)} <span>${dosisEj(x)}</span>${x.nota?`<em class="ses-nota">${esc(x.nota)}</em>`:''}</li>`).join('')}</ol>`).join('')}</details>`:'<div class="st">Sesión guiada</div>'}</div>${d||C.pausa?'':`<div class="row-acts"><button class="btn sm" data-play="${key}">Empezar</button><button class="btn ghost sm" data-expres="${key}">Poco tiempo</button></div>`}</li>
+  ${S.expres===key?expresHTML(key,`Sesión ${n} · semana ${w}`):''}`;}
 function renderCuenta(){
  syncTrimestre();
  const I=infoPrograma(),nombre=((S.cuenta.auth&&S.cuenta.auth.nombre)||S.resp.general.nombre||(S.cuenta.solicitud&&S.cuenta.solicitud.nombre)||'').trim();
@@ -2326,7 +2341,7 @@ function renderCuenta(){
      return `<div class="ses-row acc-clase ${d?'done':''}"><button class="check" data-ses="c${i}" aria-pressed="${d}" aria-label="Marcar clase ${i+1} como hecha"></button><div><b>${c.titulo?esc(c.titulo):`Clase ${i+1}`}</b><div class="st">${c.minutos?esc(c.minutos)+' min':'Pendiente de grabar'}${c.nivel?` · ${esc(c.nivel)}`:''}</div></div></div>`;}).join('')}</div></section>
     <div class="actions"><button class="btn ghost" data-nav="programas">Ver otros programas</button></div>`;
   } else {
-  const hechas=Object.values(S.cuenta.hechas).filter(Boolean).length;
+  const hechas=Object.entries(S.cuenta.hechas).filter(([k,v])=>v&&/^\d+-\d+$/.test(k)).length;
   const pct=Math.round(hechas/I.total*100);
   const semAct=Math.min(I.semanas,Math.max(1,Math.round((lunesDe(hoyProg())-lunesDe(S.cuenta.inicio||hoyISO()))/6048e5)+1));
   html+=`<section class="acc-card">
@@ -2339,11 +2354,9 @@ function renderCuenta(){
   </section>
   <section class="sec"><h2 class="sec-t">Sesiones</h2><div class="sec" style="gap:8px">
    ${[...Array(I.semanas)].map((_,wi)=>{const w=wi+1;const n=[...Array(I.porSemana)].filter((_,k)=>S.cuenta.hechas[`${w}-${k+1}`]).length;
+    if(!semPublicada(progK(),w)) return `<div class="week-d week-prox"><div class="wk-prox"><span>Semana ${w}</span><span>${w===semAct?'Tu entrenadora la está preparando':'Próximamente'}</span></div></div>`;
     return `<details class="week-d" ${w===semAct?'open':''}><summary>Semana ${w}<span>${n}/${I.porSemana}</span></summary><ul class="ses-list">
-     ${[...Array(I.porSemana)].map((_,k)=>{const key=`${w}-${k+1}`,d=!!S.cuenta.hechas[key];
-      const ex=S.cuenta.hechas[key]==='exp';
-      return `<li class="ses-row ses-row3 ${d?'done':''}"><button class="check" data-ses="${key}" aria-pressed="${d}" aria-label="Marcar sesión ${k+1} de la semana ${w} como hecha"></button><div><b>Sesión ${k+1}</b>${ex?' <span class="tag-exp">exprés</span>':''}${S.cuenta.rpe&&S.cuenta.rpe[key]?` <span class="tag-exp">RPE ${S.cuenta.rpe[key].rpe}</span>`:''}${S.cuenta.valor[key]?` <span class="stars-mini" aria-label="${S.cuenta.valor[key].estrellas} de 5">${'★'.repeat(S.cuenta.valor[key].estrellas)}${'☆'.repeat(5-S.cuenta.valor[key].estrellas)}</span>`:''}${(()=>{const pl=plantillaDe(key);return pl&&nEjPl(pl)?`<div class="st">${esc(pl.nombre)} · ${nEjPl(pl)} ejercicios</div><details class="ses-prev"><summary>Ver ejercicios</summary>${pl.bloques.filter(b=>b.ejercicios.length).map(b=>`<span class="lbl">${esc(b.nombre)}</span><ol>${b.ejercicios.map(x=>`<li>${esc(x.nombre)} <span>${x.tiempo?`${x.series>1?x.series+' × ':''}${x.tiempo} s`:`${x.series||1} × ${esc(x.reps||'—')}`}</span></li>`).join('')}</ol>`).join('')}</details>`:'<div class="st">Contenido pendiente</div>';})()}</div>${d||S.cuenta.pausa?'':`<div class="row-acts"><button class="btn sm" data-play="${key}">Empezar</button><button class="btn ghost sm" data-expres="${key}">Poco tiempo</button></div>`}</li>
-       ${S.expres===key?expresHTML(key,`Sesión ${k+1} · semana ${w}`):''}`;}).join('')}
+     ${[...Array(I.porSemana)].map((_,k)=>sesFilaHTML(`${w}-${k+1}`,k+1,w)).join('')}
     </ul></details>`;}).join('')}
   </div></section>
   <div class="actions"><button class="btn ghost" data-nav="programas">Cambiar de programa</button><button class="btn ghost" id="b-reset">Reiniciar progreso</button></div>`;
@@ -2717,7 +2730,8 @@ function datosLocalHTML(){
  if(C.prog&&C.prog.origen&&tieneResp(C.prog.resp)&&PASOS_NOM[C.prog.origen]) Q.push([`Cuestionario de ${PASOS_NOM[C.prog.origen][0]}`,resumenHTML(C.prog.resp,PASOS_NOM[C.prog.origen][1]())]);
  if(C.solProg&&C.solProg.origen&&tieneResp(C.solProg.resp)&&PASOS_NOM[C.solProg.origen]) Q.push([`Cuestionario de ${PASOS_NOM[C.solProg.origen][0]} (solicitud)`,resumenHTML(C.solProg.resp,PASOS_NOM[C.solProg.origen][1]())]);
  if(C.solicitud) Q.push(['Cuestionario de entrenamiento personal',resumenHTML(C.solicitud)]);
- if(tieneResp(Object.fromEntries(Object.entries(S.resp.general).filter(([k])=>k!=='equipo'&&k!=='parq')))) Q.push(['Cuestionario inicial',resumenHTML(S.resp.general,PASOS)]);
+ const RG=(C.cuestIni&&C.cuestIni.resp)||(S.sesion==='cliente'?S.resp.general:{});
+ if(tieneResp(Object.fromEntries(Object.entries(RG).filter(([k])=>k!=='equipo'&&k!=='parq')))) Q.push(['Cuestionario inicial',resumenHTML(RG,PASOS)]);
  return `<section class="acc-card"><p class="eyebrow">Datos</p><h2>Sus datos</h2>
   ${datosTabla([['Nombre',`<span class="nombre-propio">${esc(nombreLocal())}</span>`],['Email',esc((C.auth&&C.auth.email)||(C.contacto&&C.contacto.email)||'—')],['Teléfono',esc(sol.telefono||'')],['Cliente desde',C.alta?fechaLarga(C.alta):'—'],['Estado',ETQ_ESTADO[estadoLocal()]],['Servicios',serviciosLocal().map(etqServ).join(', ')],['Sesiones hechas',String(nH)],['Último entreno',C.ultimo?fechaLarga(C.ultimo):'—'],...(FN.logros?[['Logros',(()=>{const L=logrosLista(infoPrograma());return `${L.filter(x=>x.ok).length} de ${L.length}`;})()]]:[]),['Racha',(()=>{const R=semanasActivas();return `${R.actual} ${R.actual===1?'semana seguida':'semanas seguidas'}`;})()]])}
   ${Q.length?`<div class="cuest">${Q.map(([t,h])=>`<details class="legal"><summary>${esc(t)}</summary><div class="sec" style="gap:12px;margin-top:12px">${h}</div></details>`).join('')}</div>`:'<p class="sec-sub">No ha rellenado ningún cuestionario.</p>'}</section>`;}
@@ -2733,8 +2747,14 @@ function progAsignadoHTML(p,sub,o){
   <div class="asig-sem">${filas}</div></div>`;}
 function packAsignadoHTML(p,hechas){return `<div class="asig"><div class="asig-h"><div><p class="eyebrow">Entrena conmigo</p><b>${esc(p.nombre)}</b><span>${hechas} de ${p.clases.length} clases hechas · acceso para siempre</span></div></div>
  <div class="asig-ss">${p.clases.map((c,i)=>`<span class="asig-s ${i<hechas?'ok':''}">${i<hechas?'✓ ':''}${c.titulo?esc(c.titulo):`Clase ${i+1}`}</span>`).join('')}</div></div>`;}
+function personalAsignadoHTML(C){const k='P:'+C.sbPersonal,E=estrPlan(k),W=(CONTENIDO.planes||{})[k]||[],pub=pubDe(k),act=Math.min(E.semanas,semanaDesde(C.inicioP));let h=0;
+ const filas=[...Array(E.semanas)].map((_,wi)=>{const w=wi+1,pb=pub.includes(w);return `<div class="asig-w ${w===act?'on':''}"><span class="lbl">Semana ${w}${w===act?' · ahora':''}${pb?'':' · sin publicar'}</span><div class="asig-ss">${[...Array(E.porSemana)].map((_,si)=>{const key=`P${w}-${si+1}`,ok=!!C.hechas[key],t=W[wi]&&plsDe(k).find(p=>p.id===W[wi][si]);if(ok) h++;
+  return `<span class="asig-s ${ok?'ok':''}">${ok?'✓ ':''}${si+1}. ${t?esc(t.nombre||'Sin nombre'):'<i>Sesión por defecto</i>'}</span>`;}).join('')}</div></div>`;}).join(''),tot=E.semanas*E.porSemana;
+ return `<div class="asig"><div class="asig-h"><div><p class="eyebrow">Entrenamiento personal · sesiones</p><b>${E.semanas} semanas × ${E.porSemana} sesiones</b><span>${pub.length} de ${E.semanas} semanas publicadas</span></div><button class="btn ghost sm" data-ir-planes="${k}">Editar sesiones</button></div>
+  <div class="pbar" role="img" aria-label="${Math.round(h/tot*100)}% hecho"><i style="width:${Math.round(h/tot*100)}%"></i></div><span class="sec-sub">${h} de ${tot} sesiones hechas</span><div class="asig-sem">${filas}</div></div>`;}
 function asignadoLocalHTML(){
  const C=S.cuenta,I=infoPrograma(),B=[];
+ if(C.entrenador&&C.sbPersonal&&C.estado==='activo') B.push(personalAsignadoHTML(C));
  if(C.solProg) B.push(`<div class="asig"><div class="asig-h"><div><p class="eyebrow">Programa solicitado</p><b>${esc(nombreSol(C.solProg))}</b><span>Pendiente de que lo revises y se lo envíes</span></div><button class="btn sm" data-ptab-go="solicitudes">Revisar</button></div></div>`);
  if(I&&!I.p.clases){const semAct=Math.min(I.semanas,Math.max(1,Math.round((lunesDe(hoyProg())-lunesDe(C.inicio||hoyISO()))/6048e5)+1));
   B.push(progAsignadoHTML(I.p,I.sub,{semAct,hecha:k=>!!C.hechas[k],inicio:C.inicio,dias:diasPlan(I).map(i=>DCORTO[i]).join(', '),pausa:C.pausa&&C.pausa.motivo}));}
@@ -2947,7 +2967,7 @@ function ejDe(x){if(!x) return null;if(typeof x==='string') return ejPorNombre(x
 const MEDIA={db:null,urls:{}};
 function mediaDB(){return new Promise((ok,ko)=>{if(MEDIA.db) return ok(MEDIA.db);try{const r=indexedDB.open('castro-media',1);r.onupgradeneeded=()=>r.result.createObjectStore('m');r.onsuccess=()=>{MEDIA.db=r.result;ok(r.result);};r.onerror=()=>ko(r.error);}catch(e){ko(e);}});}
 function mediaPut(k,blob){if(SB&&S.sesion==='admin'&&MEDIA_NUBE(k)) SB.storage.from('contenido').upload(k,blob,{upsert:true,contentType:blob.type||undefined}).then(({error})=>{if(error) console.warn('Supabase archivo:',error.message);});return mediaDB().then(db=>new Promise((ok,ko)=>{const t=db.transaction('m','readwrite');t.objectStore('m').put(blob,k);t.oncomplete=()=>{if(MEDIA.urls[k]){URL.revokeObjectURL(MEDIA.urls[k]);delete MEDIA.urls[k];}ok();};t.onerror=()=>ko(t.error);}));}
-function mediaGet(k){if(MEDIA.urls[k]) return Promise.resolve(MEDIA.urls[k]);return mediaDB().then(db=>new Promise((ok,ko)=>{const r=db.transaction('m').objectStore('m').get(k);r.onsuccess=()=>{if(!r.result){if(!SB||!MEDIA_NUBE(k)) return ok(null);const u=mediaURLPublica(k);return fetch(u,{method:'HEAD'}).then(x=>{if(x.ok){MEDIA.urls[k]=u;ok(u);}else ok(null);}).catch(()=>ok(null));}MEDIA.urls[k]=URL.createObjectURL(r.result);ok(MEDIA.urls[k]);};r.onerror=()=>ko(r.error);}));}
+function mediaGet(k){if(MEDIA.urls[k]) return Promise.resolve(MEDIA.urls[k]);return mediaDB().then(db=>new Promise((ok,ko)=>{const r=db.transaction('m').objectStore('m').get(k);r.onsuccess=()=>{if(!r.result){if(SB&&/^tec-/.test(k)&&TEC_RUTA[k.slice(4)]) return SB.storage.from('tecnica').createSignedUrl(TEC_RUTA[k.slice(4)],3600).then(({data})=>{if(data&&data.signedUrl){MEDIA.urls[k]=data.signedUrl;ok(data.signedUrl);}else ok(null);}).catch(()=>ok(null));if(!SB||!MEDIA_NUBE(k)) return ok(null);const u=mediaURLPublica(k);return fetch(u,{method:'HEAD'}).then(x=>{if(x.ok){MEDIA.urls[k]=u;ok(u);}else ok(null);}).catch(()=>ok(null));}MEDIA.urls[k]=URL.createObjectURL(r.result);ok(MEDIA.urls[k]);};r.onerror=()=>ko(r.error);}));}
 function mediaDel(k){if(SB&&S.sesion==='admin'&&MEDIA_NUBE(k)) SB.storage.from('contenido').remove([k]).catch(()=>{});if(MEDIA.urls[k]){URL.revokeObjectURL(MEDIA.urls[k]);delete MEDIA.urls[k];}return mediaDB().then(db=>{db.transaction('m','readwrite').objectStore('m').delete(k);}).catch(()=>{});}
 function embedURL(u){let m=u.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,})/);if(m) return 'https://www.youtube-nocookie.com/embed/'+m[1]+'?rel=0';m=u.match(/vimeo\.com\/(?:video\/)?(\d+)/);if(m) return 'https://player.vimeo.com/video/'+m[1];return null;}
 const demoVacio=(txt)=>`<span class="thumb"><span class="play" aria-hidden="true"></span></span>${txt?`<span class="pend">${txt}</span>`:''}`;
@@ -2964,7 +2984,7 @@ new MutationObserver(hidrataDemos).observe($app,{childList:true,subtree:true});
 function ejInfoHTML(ej){if(!ej||!((ej.como||[]).length||(ej.errores||[]).length)) return '';
  return `<details class="ej-info"><summary>Cómo se hace</summary>${(ej.como||[]).length?`<ol>${ej.como.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`:''}${(ej.errores||[]).length?`<span class="lbl">Errores frecuentes</span><ul>${ej.errores.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}</details>`;}
 const RUT_SES=[['plantillaSesion','Sesión guiada'],['plantillaExpres','Versión exprés']];
-function rutinasDestino(){const D=[];(CONTENIDO.plantillas||[]).forEach(pl=>pl.bloques.forEach((b,bi)=>D.push({v:`pl:${pl.id}.${bi}`,t:`Plantilla «${pl.nombre}» · ${b.nombre}`})));RUT_SES.forEach(([k,t])=>CONTENIDO[k].forEach((b,bi)=>D.push({v:`${k}.${bi}`,t:`${t} · ${b.nombre}`})));
+function rutinasDestino(){const D=[];(CONTENIDO.plantillas||[]).forEach(pl=>pl.bloques.forEach((b,bi)=>D.push({v:`pl:${pl.id}.${bi}`,t:`Plantilla «${pl.nombre}»${pl.plan?` (${nombrePlanK(pl.plan)})`:''} · ${b.nombre}`})));RUT_SES.forEach(([k,t])=>CONTENIDO[k].forEach((b,bi)=>D.push({v:`${k}.${bi}`,t:`${t} · ${b.nombre}`})));
  CONTENIDO.entrenoGratis.bloques.forEach((b,bi)=>D.push({v:`entrenoGratis.${bi}`,t:`Rutina de la portada · ${b.nombre}`}));return D;}
 function usosEj(ej){const U=[];(CONTENIDO.plantillas||[]).forEach(pl=>pl.bloques.forEach(b=>b.ejercicios.forEach(e=>{if(ejDe(e)===ej) U.push(`Plantilla «${pl.nombre}»`);})));RUT_SES.forEach(([k,t])=>CONTENIDO[k].forEach(b=>b.ejercicios.forEach(e=>{if(ejDe(e)===ej) U.push(`${t} · ${b.nombre}`);})));
  CONTENIDO.entrenoGratis.bloques.forEach(b=>b.ejercicios.forEach(([n])=>{if(ejPorNombre(n)===ej) U.push(`Rutina de la portada · ${b.nombre}`);}));return U;}
@@ -3079,7 +3099,6 @@ function bindEjercicios(re){
 /* ---------- Plantillas de sesión y planificación de programas ---------- */
 function nuevoEjPl(ej,b){const conSeries=!/calent|calma/i.test(b.nombre);return conSeries?{ejId:ej.id,nombre:ej.nombre,series:3,reps:'',tiempo:0,descanso:60,alternativas:[],nota:''}:{ejId:ej.id,nombre:ej.nombre,series:1,reps:'',tiempo:60,descanso:0,alternativas:[],nota:''};}
 function destinosPlan(){const L=[];todosProgramas().filter(p=>!p.clases&&!progOculto(p)).forEach(p=>{if(p.subplanes) p.subplanes.forEach(sp=>L.push({k:p.id+'/'+sp.id,n:`${p.nombre} · ${sp.nombre}`,p,sub:sp}));else L.push({k:p.id,n:p.nombre,p,sub:null});});return L;}
-function usosPl(id){let n=0;Object.values(CONTENIDO.planes||{}).forEach(W=>W.forEach(w=>w.forEach(x=>{if(x===id) n++;})));return n;}
 function plOpciones(sel){const L=CONTENIDO.ejercicios.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')),f=CONTENIDO.ejFiltros[0],G={};
  L.forEach(e=>{const g=(f&&((e.tags||{})[f.id]||[])[0])||'Sin clasificar';(G[g]=G[g]||[]).push(e);});
  return Object.keys(G).length>1?Object.entries(G).map(([g,es])=>`<optgroup label="${esc(g)}">${es.map(e=>`<option value="${e.id}" ${e.id===sel?'selected':''}>${esc(e.nombre)}</option>`).join('')}</optgroup>`).join(''):L.map(e=>`<option value="${e.id}" ${e.id===sel?'selected':''}>${esc(e.nombre)}</option>`).join('');}
@@ -3101,42 +3120,206 @@ function plEditorHTML(pl){
   <div class="actions"><button class="btn ghost sm" id="pl-addb">Añadir bloque</button></div>
   <div class="actions">${S.plBorrar?`<span class="sec-sub">${usosPl(pl.id)?`Está asignada a ${usosPl(pl.id)} sesiones, que se quedarán sin plantilla. `:''}¿Eliminarla?</span><button class="btn sm" id="pl-del-ok">Eliminar</button><button class="link" id="pl-del-no">No</button>`:'<button class="link c-del" id="pl-del">Eliminar plantilla</button>'}</div>
  </section>`;}
+/* ---------- Planes: cada plan (programa, subplan o entrenamiento personal) tiene sus plantillas y sus semanas ---------- */
+const ES_UUID=s=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(s||''));
+function nuevoUUID(){try{if(crypto.randomUUID) return crypto.randomUUID();}catch(e){}
+ const h=[...crypto.getRandomValues(new Uint8Array(16))];h[6]=h[6]&15|64;h[8]=h[8]&63|128;const x=h.map(b=>b.toString(16).padStart(2,'0')).join('');
+ return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`;}
+// Identificador fijo a partir de un texto (el mismo texto da siempre el mismo id)
+function uuidDe(s){const b=new TextEncoder().encode(String(s)),h=[];
+ for(let j=0;j<4;j++){let x=(0x811c9dc5^Math.imul(j+1,0x9e3779b9))>>>0;for(const c of b){x^=c;x=Math.imul(x,0x01000193)>>>0;}for(let i=b.length-1;i>=0;i--){x^=b[i]+j;x=Math.imul(x^(x>>>15),0x5bd1e995)>>>0;}h.push(x>>>0);}
+ const t=h.map(v=>v.toString(16).padStart(8,'0')).join('').split('');t[12]='5';t[16]=((parseInt(t[16],16)&3)|8).toString(16);const z=t.join('');
+ return `${z.slice(0,8)}-${z.slice(8,12)}-${z.slice(12,16)}-${z.slice(16,20)}-${z.slice(20)}`;}
+const esPersonalK=k=>String(k||'').startsWith('P:');
+function duenoPlan(k){if(esPersonalK(k)) return {id_contratacion:k.slice(2)};const [id,sub]=String(k).split('/');return idsPrograma(id,sub||null);}
+function planDeFila(f,subs){if(f.id_contratacion) return 'P:'+f.id_contratacion;const p=progDeFila(f,subs||{});return p.sub?p.id+'/'+p.sub:p.id;}
+function clientePlanP(k){return clientes().find(c=>c.sbPersonal&&('P:'+c.sbPersonal)===k)||null;}
+function estrPersonal(c){const e=(c&&c.estrP)||{},semanas=+e.semanas||4,porSemana=+e.porSemana||3;return {semanas,porSemana,total:semanas*porSemana};}
+function estrPlan(k){
+ if(esPersonalK(k)) return estrPersonal(S.sesion==='admin'?clientePlanP(k):S.cuenta);
+ const [id,sub]=String(k).split('/'),p=todosProgramas().find(x=>x.id===id);
+ return p?estructuraProg(p,sub&&p.subplanes?p.subplanes.find(x=>x.id===sub):null):{semanas:4,porSemana:3,total:12};}
+const plsDe=k=>(CONTENIDO.plantillas||[]).filter(p=>p.plan===k);
+const pubDe=k=>Object.keys(((CONTENIDO.publicadas||{})[k])||{}).map(Number).sort((a,b)=>a-b);
+const semPublicada=(k,w)=>!!(((CONTENIDO.publicadas||{})[k]||{})[w]);
+const progK=()=>{const c=S.cuenta.prog;return c?(c.sub?c.id+'/'+c.sub:c.id):null;};
+// Clave de sesión → plan: «3-2» es la sesión 2 de la semana 3 del programa; «P3-2», la del entrenamiento personal
+function planDeClave(key){const C=S.cuenta;key=String(key||'');
+ if(key[0]==='P') return C.sbPersonal?{k:'P:'+C.sbPersonal,wn:key.slice(1)}:null;
+ const k=progK();return k?{k,wn:key}:null;}
+function plantillaDe(key){const x=planDeClave(key);if(!x) return null;const [w,n]=x.wn.split('-').map(Number),P=(CONTENIDO.planes||{})[x.k],id=P&&P[w-1]&&P[w-1][n-1];
+ return id?(CONTENIDO.plantillas||[]).find(p=>p.id===id&&p.plan===x.k)||null:null;}
+function nombrePlanK(k){if(esPersonalK(k)){const c=S.sesion==='admin'?clientePlanP(k):null;return c?'Personal · '+conCuenta(c,()=>nombreLocal()):'Entrenamiento personal';}
+ const d=destinosPlan().find(x=>x.k===k);return d?d.n:k;}
+function destinosTodos(){const L=destinosPlan().map(d=>({...d,personal:false}));
+ clientes().filter(c=>c.entrenador&&c.sbPersonal&&['activo','pausa','en pausa'].includes(c.estado)).forEach(c=>L.push({k:'P:'+c.sbPersonal,n:'Personal · '+conCuenta(c,()=>nombreLocal()),personal:true,c}));return L;}
+function usosPl(id){let n=0;Object.values(CONTENIDO.planes||{}).forEach(W=>W.forEach(w=>(w||[]).forEach(x=>{if(x===id) n++;})));return n;}
+
+// Una vez: los ejercicios y plantillas antiguos pasan a tener identificadores de Supabase, y cada plantilla, a su plan
+function migrarPlanes(){const K=CONTENIDO;if(K.migUUID) return;
+ K.plantillas=K.plantillas||[];K.planes=K.planes||{};K.publicadas=K.publicadas||{};
+ const mapaEj={},medias=[];
+ (K.ejercicios||[]).forEach(e=>{if(ES_UUID(e.id)) return;const n=nuevoUUID();mapaEj[e.id]=n;if(e.archivo) medias.push(['ej-'+e.id,'ej-'+n]);e.id=n;});
+ const fixEj=x=>{if(x&&x.ejId&&mapaEj[x.ejId]) x.ejId=mapaEj[x.ejId];};
+ K.plantillas.forEach(p=>p.bloques.forEach(b=>b.ejercicios.forEach(fixEj)));
+ RUT_SES.forEach(([k])=>(K[k]||[]).forEach(b=>(b.ejercicios||[]).forEach(fixEj)));
+ const mapaPl={};K.plantillas.forEach(p=>{if(!ES_UUID(p.id)){mapaPl[p.id]=nuevoUUID();p.id=mapaPl[p.id];}});
+ Object.values(K.planes).forEach(W=>W.forEach((w,i)=>{if(w) W[i]=w.map(x=>mapaPl[x]||x);}));
+ // Cada plantilla se queda en el plan donde está asignada (si está en varios, se copia a cada uno)
+ const nueva=[];
+ K.plantillas.forEach(p=>{if(p.plan){nueva.push(p);return;}
+  const planes=Object.keys(K.planes).filter(k=>K.planes[k].some(w=>(w||[]).includes(p.id)));
+  if(!planes.length){nueva.push(p);return;}      // sin usar: queda en «Plantillas sin plan»
+  planes.forEach((k,i)=>{const c=i?JSON.parse(JSON.stringify(p)):p;if(i){c.id=nuevoUUID();K.planes[k].forEach((w,j)=>{if(w) K.planes[k][j]=w.map(x=>x===p.id?c.id:x);});}c.plan=k;nueva.push(c);});});
+ K.plantillas=nueva;K.migUUID=true;
+ try{localStorage.setItem('cv-contenido',JSON.stringify(K));}catch(e){}
+ if(medias.length){try{localStorage.removeItem('cv-media-subido');}catch(e){}
+  MIG_MEDIA=mediaDB().then(db=>Promise.all(medias.map(([a,b])=>new Promise(ok=>{const t=db.transaction('m','readwrite'),st=t.objectStore('m'),r=st.get(a);
+   r.onsuccess=()=>{if(r.result){st.put(r.result,b);st.delete(a);}};t.oncomplete=ok;t.onerror=ok;})))).catch(()=>{});}
+}
+
+/* ----- Guardar en Supabase: ejercicios, etiquetas, plantillas, semanas (solo la entrenadora) ----- */
+const PLN={sub:{},listo:false,t:null,en:false,pend:false,prog:new Set(),subs:{},tB:0};
+const hashJ=o=>JSON.stringify(o);
+function filaEj(e){return {id_ejercicio:e.id,nombre:e.nombre,musculos:e.musculos||null,como_se_hace:e.como||[],errores:e.errores||[],video_demo_url:e.enlace||null,archivo_tipo:e.archivo?(e.archivo.tipo==='imagen'?'imagen':'video'):null,archivo_nombre:e.archivo?(e.archivo.nombre||null):null};}
+const idEtq=(g,o)=>uuidDe('etq|'+g+'|'+o);
+function etiquetasDe(){const L=[];(CONTENIDO.ejFiltros||[]).forEach(f=>(f.opciones||[]).forEach(o=>{const id=idEtq(f.nombre,o);if(!L.some(x=>x.id_etiqueta===id)) L.push({id_etiqueta:id,grupo:f.nombre,nombre:o});}));return L;}
+function tagsFilas(e){const R=[];(CONTENIDO.ejFiltros||[]).forEach(f=>((e.tags||{})[f.id]||[]).forEach(o=>{const id=idEtq(f.nombre,o);if((f.opciones||[]).includes(o)&&!R.some(x=>x.id_etiqueta===id)) R.push({id_ejercicio:e.id,id_etiqueta:id});}));return R;}
+function planValido(k){if(esPersonalK(k)) return ES_UUID(k.slice(2));const o=duenoPlan(k);return o.id_programa?PLN.prog.has(o.id_programa):!!PLN.subs[o.id_subplan];}
+function filaPl(p,i){return {id_plantilla_sesion:p.id,id_programa:null,id_subplan:null,id_contratacion:null,...duenoPlan(p.plan),nombre:p.nombre||'Sin nombre',nota:p.nota||null,orden:i+1};}
+const plSubibles=()=>(CONTENIDO.plantillas||[]).filter(p=>p.plan&&ES_UUID(p.id)&&planValido(p.plan));
+function semFilas(k,w,plV){const E=estrPlan(k),ses=(((CONTENIDO.planes||{})[k]||[])[w-1]||[]).slice(0,E.porSemana),P=(CONTENIDO.publicadas||{})[k]||{},pub=!!P[w];
+ if(!pub&&!ses.some(x=>x&&plV.has(x))) return null;   // semana vacía y sin publicar: no hace falta guardarla
+ const id=uuidDe('sem|'+k+'|'+w),f={id_semana_plan:id,id_programa:null,id_subplan:null,id_contratacion:null,...duenoPlan(k),semana:w,publicada:pub,fecha_publicacion:pub?P[w]:null};
+ const SP=ses.map((pid,i)=>pid&&plV.has(pid)?{id_sesion_plan:uuidDe('ses|'+k+'|'+w+'|'+(i+1)),id_semana_plan:id,num_sesion:i+1,id_plantilla_sesion:pid}:null).filter(Boolean);
+ return {id,f,SP,h:hashJ([f,SP])};}
+function planesClaves(){return [...new Set([...Object.keys(CONTENIDO.planes||{}),...Object.keys(CONTENIDO.publicadas||{})])].filter(planValido);}
+// Marca como ya guardado lo que hay ahora (tras bajarlo de Supabase)
+function planesMarcar(){const U=PLN.sub={ej:{},pl:{},sem:{}};const ET=etiquetasDe();U.et=hashJ(ET);U.etIds=ET.map(x=>x.id_etiqueta);
+ (CONTENIDO.ejercicios||[]).forEach(e=>{if(ES_UUID(e.id)) U.ej[e.id]=hashJ([filaEj(e),tagsFilas(e)]);});
+ const PL=plSubibles();PL.forEach((p,i)=>U.pl[p.id]=hashJ([filaPl(p,i),p.bloques]));const plV=new Set(PL.map(p=>p.id));
+ planesClaves().forEach(k=>{for(let w=1;w<=estrPlan(k).semanas;w++){const s=semFilas(k,w,plV);if(s) U.sem[s.id]=s.h;}});}
+function planesSubir(){if(!SB||S.sesion!=='admin'||!PLN.listo) return;clearTimeout(PLN.t);PLN.t=setTimeout(planesSubirYa,900);}
+async function planesSubirYa(){if(PLN.en){PLN.pend=true;return;}PLN.en=true;const U=PLN.sub;U.ej=U.ej||{};U.pl=U.pl||{};U.sem=U.sem||{};
+ const ok=r=>{if(r&&r.error) throw r.error;return r;};
+ try{
+  const ET=etiquetasDe(),hE=hashJ(ET);
+  if(U.et!==hE){if(ET.length) ok(await SB.from('etiqueta').upsert(ET));const vivas=new Set(ET.map(x=>x.id_etiqueta)),viejas=(U.etIds||[]).filter(i=>!vivas.has(i));
+   if(viejas.length) ok(await SB.from('etiqueta').delete().in('id_etiqueta',viejas));U.et=hE;U.etIds=[...vivas];}
+  const EJ=(CONTENIDO.ejercicios||[]).filter(e=>ES_UUID(e.id)),ejV=new Set(EJ.map(e=>e.id));
+  for(const e of EJ){const f=filaEj(e),t=tagsFilas(e),h=hashJ([f,t]);if(U.ej[e.id]===h) continue;
+   ok(await SB.from('ejercicio').upsert(f));ok(await SB.from('ejercicio_etiqueta').delete().eq('id_ejercicio',e.id));if(t.length) ok(await SB.from('ejercicio_etiqueta').insert(t));U.ej[e.id]=h;}
+  const PL=plSubibles(),plV=new Set(PL.map(p=>p.id));
+  for(const [i,p] of PL.entries()){const f=filaPl(p,i),h=hashJ([f,p.bloques]);if(U.pl[p.id]===h) continue;
+   ok(await SB.from('plantilla_sesion').upsert(f));ok(await SB.from('bloque').delete().eq('id_plantilla_sesion',p.id));
+   const B=p.bloques.map((b,bi)=>({id_bloque:nuevoUUID(),id_plantilla_sesion:p.id,nombre:b.nombre||'Bloque',orden:bi+1}));
+   if(B.length) ok(await SB.from('bloque').insert(B));
+   const BE=[];p.bloques.forEach((b,bi)=>b.ejercicios.forEach((x,ei)=>BE.push({id_bloque:B[bi].id_bloque,id_ejercicio:(x.ejId&&ejV.has(x.ejId))?x.ejId:null,ejercicio_nombre:x.nombre||null,series:Math.max(1,+x.series||1),repeticiones:x.reps?String(x.reps):null,tiempo_s:Math.max(0,+x.tiempo||0),descanso_s:Math.max(0,+x.descanso||0),nota:x.nota||null,alternativas:x.alternativas||[],orden:ei+1})));
+   if(BE.length) ok(await SB.from('bloque_ejercicio').insert(BE));U.pl[p.id]=h;}
+  const vivasS=new Set();
+  for(const k of planesClaves()) for(let w=1;w<=estrPlan(k).semanas;w++){const s=semFilas(k,w,plV);if(!s) continue;vivasS.add(s.id);if(U.sem[s.id]===s.h) continue;
+   ok(await SB.from('semana_plan').upsert(s.f));ok(await SB.from('sesion_plan').delete().eq('id_semana_plan',s.id));if(s.SP.length) ok(await SB.from('sesion_plan').insert(s.SP));U.sem[s.id]=s.h;}
+  const semX=Object.keys(U.sem).filter(i=>!vivasS.has(i));
+  if(semX.length){ok(await SB.from('semana_plan').delete().in('id_semana_plan',semX));semX.forEach(i=>delete U.sem[i]);}
+  const plX=Object.keys(U.pl).filter(i=>!plV.has(i));
+  if(plX.length){ok(await SB.from('plantilla_sesion').delete().in('id_plantilla_sesion',plX));plX.forEach(i=>delete U.pl[i]);}
+  const ejX=Object.keys(U.ej).filter(i=>!ejV.has(i));
+  if(ejX.length){ok(await SB.from('ejercicio').delete().in('id_ejercicio',ejX));ejX.forEach(i=>delete U.ej[i]);}
+  if(S.plError){S.plError=false;if(S.pantalla==='panel') renderPanel();}
+ }catch(e){console.warn('Supabase planes:',e&&e.message||e);
+  if(!S.plError){S.plError=true;if(S.pantalla==='panel'){const y=window.scrollY;renderPanel();window.scrollTo(0,y);}}setTimeout(planesSubir,15000);}
+ PLN.en=false;if(PLN.pend){PLN.pend=false;planesSubir();}}
+async function selTodo(t,q){let out=[];for(let i=0;;i+=1000){const r=await SB.from(t).select(q||'*').range(i,i+999);if(r.error) throw r.error;const d=r.data||[];out=out.concat(d);if(d.length<1000) break;}return out;}
+// Bajar de Supabase (entrenadora: todo; cliente: lo de los programas y su plan personal)
+async function planesBajar(){if(!SB) return;PLN.tB=Date.now();
+ try{const [PR,SPl,EJ,ET,EE,PL,BL,BE,SM,SS]=await Promise.all([selTodo('programa','id_programa'),selTodo('subplan','id_subplan,id_programa'),selTodo('ejercicio'),selTodo('etiqueta'),selTodo('ejercicio_etiqueta'),selTodo('plantilla_sesion'),selTodo('bloque'),selTodo('bloque_ejercicio'),selTodo('semana_plan'),selTodo('sesion_plan')]);
+  PLN.prog=new Set(PR.map(x=>x.id_programa));const subs={};SPl.forEach(x=>subs[x.id_subplan]=x);PLN.subs=subs;
+  const admin=S.sesion==='admin',K=CONTENIDO,antes=hashJ([K.ejercicios,K.plantillas,K.planes,K.publicadas,K.ejFiltros]);
+  if(admin&&!EJ.length&&!PL.length&&!SM.length){PLN.sub={};PLN.listo=true;planesSubir();return;}   // primera vez: sube lo de este navegador
+  const etq={};ET.forEach(x=>etq[x.id_etiqueta]=x);const F=K.ejFiltros=K.ejFiltros||[];
+  const grupo=g=>{let f=F.find(x=>x.nombre===g);if(!f){f={id:'f'+Date.now().toString(36)+F.length,nombre:g,opciones:[]};F.push(f);}return f;};
+  const loc={};(K.ejercicios||[]).forEach(e=>loc[e.id]=e);
+  const ejs=EJ.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(r=>{const tags={};
+   EE.filter(x=>x.id_ejercicio===r.id_ejercicio).forEach(x=>{const t=etq[x.id_etiqueta];if(!t) return;const f=grupo(t.grupo);if(!f.opciones.includes(t.nombre)) f.opciones.push(t.nombre);(tags[f.id]=tags[f.id]||[]).push(t.nombre);});
+   return {...(loc[r.id_ejercicio]||{}),id:r.id_ejercicio,nombre:r.nombre,tags,musculos:r.musculos||'',enlace:r.video_demo_url||'',como:r.como_se_hace||[],errores:r.errores||[],archivo:r.archivo_tipo?{nombre:r.archivo_nombre||'',tipo:r.archivo_tipo}:null};});
+  const bl={},be={};BL.forEach(b=>(bl[b.id_plantilla_sesion]=bl[b.id_plantilla_sesion]||[]).push(b));BE.forEach(x=>(be[x.id_bloque]=be[x.id_bloque]||[]).push(x));
+  const pls=PL.slice().sort((a,b)=>(a.orden||0)-(b.orden||0)).map(p=>({id:p.id_plantilla_sesion,plan:planDeFila(p,subs),nombre:p.nombre||'',nota:p.nota||'',
+   bloques:(bl[p.id_plantilla_sesion]||[]).sort((a,b)=>a.orden-b.orden).map(b=>({nombre:b.nombre,ejercicios:(be[b.id_bloque]||[]).sort((a,b)=>a.orden-b.orden).map(x=>{
+    const e=x.id_ejercicio&&ejs.find(z=>z.id===x.id_ejercicio),o={nombre:x.ejercicio_nombre||(e&&e.nombre)||'',series:x.series||1,reps:x.repeticiones||'',tiempo:x.tiempo_s||0,descanso:x.descanso_s||0,alternativas:x.alternativas||[],nota:x.nota||''};
+    if(x.id_ejercicio) o.ejId=x.id_ejercicio;return o;})}))}));
+  const planes={},pubs={},ssb={};SS.forEach(x=>(ssb[x.id_semana_plan]=ssb[x.id_semana_plan]||[]).push(x));
+  SM.forEach(s=>{const k=planDeFila(s,subs),W=planes[k]=planes[k]||[],w=W[s.semana-1]=W[s.semana-1]||[];(ssb[s.id_semana_plan]||[]).forEach(x=>{w[x.num_sesion-1]=x.id_plantilla_sesion;});
+   if(s.publicada) (pubs[k]=pubs[k]||{})[s.semana]=s.fecha_publicacion||new Date().toISOString();});
+  Object.values(planes).forEach(W=>{for(let i=0;i<W.length;i++){W[i]=W[i]||[];for(let j=0;j<W[i].length;j++) W[i][j]=W[i][j]||'';}});
+  K.ejercicios=ejs;K.plantillas=[...pls,...(admin?(K.plantillas||[]).filter(p=>!p.plan):[])];K.planes=planes;K.publicadas=pubs;
+  if(admin){planesMarcar();PLN.listo=true;}
+  try{localStorage.setItem('cv-contenido',JSON.stringify(K));}catch(e){}
+  if(antes!==hashJ([K.ejercicios,K.plantillas,K.planes,K.publicadas,K.ejFiltros])&&['panel','cuenta'].includes(S.pantalla)&&!S.player&&!S.plEdit&&!S.ejEdit){const y=window.scrollY;render();window.scrollTo(0,y);}
+ }catch(e){console.warn('Supabase planes:',e&&e.message||e);if(S.sesion==='admin') setTimeout(planesBajar,20000);}}
+
+/* ----- Panel: pestaña «Planes» ----- */
+function prevSemanaHTML(k,w,E){const W=((CONTENIDO.planes||{})[k]||[])[w-1]||[];
+ return `<div class="pl-prev"><p class="eyebrow">Vista previa · así lo verá el cliente</p>${[...Array(E.porSemana)].map((_,si)=>{const pl=plsDe(k).find(p=>p.id===W[si]);
+  if(!pl||!nEjPl(pl)) return `<div class="pl-prev-s"><b>Sesión ${si+1}</b><span class="sec-sub">Sesión por defecto (Contenido → Sesiones guiadas)</span></div>`;
+  return `<div class="pl-prev-s"><b>Sesión ${si+1} · ${esc(pl.nombre||'Sin nombre')}</b>${pl.nota?`<p class="pl-enota">${esc(pl.nota)}</p>`:''}${pl.bloques.filter(b=>b.ejercicios.length).map(b=>`<span class="lbl">${esc(b.nombre)}</span><ol>${b.ejercicios.map(x=>`<li>${esc(x.nombre)} <span class="sec-sub">${dosisEj(x)}</span></li>`).join('')}</ol>`).join('')}</div>`;}).join('')}</div>`;}
+function dosisEj(x){const s=+x.series||1;return x.tiempo?`${s>1?s+' × ':''}${x.tiempo} s`:`${s} × ${x.reps?esc(String(x.reps)):'—'}`+(x.descanso?` · descanso ${x.descanso} s`:'');}
 function pPlanesHTML(){
- const PL=CONTENIDO.plantillas,ed=S.plEdit&&PL.find(x=>x.id===S.plEdit),D=destinosPlan(),dest=D.find(d=>d.k===S.plProg)||D[0];
- let prog='';
- if(dest){const E=estructuraProg(dest.p,dest.sub),W=(CONTENIDO.planes[dest.k]||[]);let asig=0;
-  const filas=[...Array(E.semanas)].map((_,wi)=>`<div class="pl-sem"><b>Semana ${wi+1}</b><div class="pl-ses">${[...Array(E.porSemana)].map((_,si)=>{const v=(W[wi]||[])[si]||'';if(v) asig++;
-   return `<div class="field"><label for="pla_${wi}_${si}">Sesión ${si+1}</label><select id="pla_${wi}_${si}" data-asig="${wi}.${si}"><option value="">Sin asignar</option>${PL.map(p=>`<option value="${p.id}" ${p.id===v?'selected':''}>${esc(p.nombre||'Sin nombre')}</option>`).join('')}</select></div>`;}).join('')}</div>
-   ${wi?`<button class="link" data-plcopia="${wi}">Copiar la semana ${wi}</button>`:''}</div>`).join('');
-  prog=`<section class="acc-card" id="pl-prog"><p class="eyebrow">Programas</p><h2>Qué sesión toca cada semana</h2>
-   <div class="field"><label for="pl-dest">Programa</label><select id="pl-dest">${D.map(d=>`<option value="${d.k}" ${d.k===dest.k?'selected':''}>${esc(d.n)}</option>`).join('')}</select></div>
-   <p class="sec-sub">${E.semanas} semanas × ${E.porSemana} sesiones por semana · <b>${asig} de ${E.semanas*E.porSemana}</b> sesiones con plantilla.${!(parseInt((dest.sub&&dest.sub.semanas)||dest.p.semanas)&&parseInt(dest.p.sesiones))?' Son semanas y sesiones de ejemplo: cámbialas en Contenido → Programas.':''}</p>
-   ${PL.length?`<div class="actions"><button class="btn ghost sm" id="pl-todas">Repetir la semana 1 en todas</button><button class="link" id="pl-vaciar">Vaciar</button></div><div class="pl-semanas">${filas}</div>`:'<p class="ph">Crea primero alguna plantilla de sesión.</p>'}
-   <p class="sec-sub">Las sesiones sin plantilla usan la sesión por defecto de Contenido → Sesiones guiadas.</p></section>`;}
- return `<section class="sec"><div class="acc-head"><div><p class="eyebrow">Planes</p><h2 class="sec-t">Plantillas y programas</h2><p class="sec-sub">Crea plantillas de sesión con los ejercicios de tu biblioteca y asígnalas a cada semana de cada programa. Puedes reutilizar la misma plantilla en varios programas y duplicarla para hacer progresiones.</p></div>${ed?'':'<button class="btn" id="pl-nueva">Nueva plantilla</button>'}</div>
+ const D=destinosTodos(),dest=D.find(d=>d.k===S.plProg)||D[0];
+ if(!dest) return `<section class="sec"><p class="eyebrow">Planes</p><h2 class="sec-t">Plantillas y planes</h2><p class="empty">Todavía no hay ningún plan visible. Activa algún programa en Contenido → Programas.</p></section>`;
+ const k=dest.k,PL=plsDe(k),ed=S.plEdit&&PL.find(x=>x.id===S.plEdit),E=estrPlan(k),W=(CONTENIDO.planes||{})[k]||[],pub=pubDe(k);
+ const sinPlan=(CONTENIDO.plantillas||[]).filter(p=>!p.plan),otras=(CONTENIDO.plantillas||[]).filter(p=>p.plan&&p.plan!==k);
+ let asig=0;
+ const semanas=[...Array(E.semanas)].map((_,wi)=>{const w=wi+1,ses=W[wi]||[],pubd=pub.includes(w);
+  const nAs=[...Array(E.porSemana)].filter((_,si)=>ses[si]&&PL.some(p=>p.id===ses[si])).length;asig+=nAs;
+  return `<article class="pl-sem ${pubd?'pub':''}" id="pl-sem-${w}"><div class="pl-sem-h"><b>Semana ${w}</b><span class="estado ${pubd?'ok':''}">${pubd?'publicada':'borrador'}</span><span class="sec-sub">${nAs} de ${E.porSemana} con plantilla</span></div>
+   <div class="pl-ses">${[...Array(E.porSemana)].map((_,si)=>{const v=ses[si]||'';return `<div class="field"><label for="pla_${wi}_${si}">Sesión ${si+1}</label><select id="pla_${wi}_${si}" data-asig="${wi}.${si}"><option value="">Sesión por defecto</option>${PL.map(p=>`<option value="${p.id}" ${p.id===v?'selected':''}>${esc(p.nombre||'Sin nombre')}</option>`).join('')}</select></div>`;}).join('')}</div>
+   <div class="actions">${pubd?`<button class="btn ghost sm" data-pub="${w}.0">Quitar publicación</button>`:`<button class="btn sm" data-pub="${w}.1">Publicar semana ${w}</button>`}<button class="link" data-plprev="${w}">${S.plPrev===w?'Cerrar vista previa':'Vista previa'}</button>${wi?`<button class="link" data-plcopia="${wi}">Copiar la semana ${wi}</button>`:''}</div>
+   ${S.plPrev===w?prevSemanaHTML(k,w,E):''}</article>`;}).join('');
+ const card=p=>{const u=usosPl(p.id);return `<article class="pl-card ${ed&&ed.id===p.id?'on':''}"><b>${esc(p.nombre||'Sin nombre')}</b><span>${nEjPl(p)} ejercicios · ${p.bloques.length} bloques</span><span>${u?`En ${u} ${u===1?'sesión':'sesiones'}`:'Sin asignar a ninguna semana'}</span><div class="actions"><button class="btn ghost sm" data-pledit="${p.id}">Editar</button><button class="btn ghost sm" data-pldup="${p.id}">Duplicar</button></div></article>`;};
+ const grupos={};otras.forEach(p=>(grupos[p.plan]=grupos[p.plan]||[]).push(p));
+ return `<section class="sec"><div class="acc-head"><div><p class="eyebrow">Planes</p><h2 class="sec-t">Plantillas y planes</h2><p class="sec-sub">Elige un plan, crea sus plantillas de sesión, asígnalas a cada semana y publica las semanas cuando estén listas: el cliente solo ve las semanas publicadas.</p></div></div>
+  ${!dest.personal&&PLN.listo&&!planValido(k)?'<div class="banner"><strong>Este programa no está en Supabase.</strong>Lo que prepares aquí se guarda solo en este navegador. Avísame para darlo de alta en la base de datos.</div>':''}
+  ${S.plError?'<div class="banner"><strong>No se han podido guardar los planes en la nube.</strong> Están guardados en este navegador y se volverá a intentar en unos segundos.</div>':''}
+  <section class="acc-card"><div class="field pl-dest"><label for="pl-dest">Plan</label><select id="pl-dest">${D.filter(d=>!d.personal).length?`<optgroup label="Programas">${D.filter(d=>!d.personal).map(d=>`<option value="${d.k}" ${d.k===k?'selected':''}>${esc(d.n)}${pubDe(d.k).length?` · ${pubDe(d.k).length} sem. publicadas`:''}</option>`).join('')}</optgroup>`:''}${D.filter(d=>d.personal).length?`<optgroup label="Entrenamiento personal">${D.filter(d=>d.personal).map(d=>`<option value="${d.k}" ${d.k===k?'selected':''}>${esc(d.n)}</option>`).join('')}</optgroup>`:''}</select></div>
+  ${dest.personal?`<div class="c-grid pl-estr"><div class="field"><label for="pl-sems">Semanas del plan</label><input type="number" id="pl-sems" min="1" max="52" value="${E.semanas}"></div><div class="field"><label for="pl-por">Sesiones por semana</label><input type="number" id="pl-por" min="1" max="7" value="${E.porSemana}"></div></div><p class="sec-sub">Semanas y sesiones de este cliente. Las publicadas le aparecen en su cuenta.</p>`:''}</section>
   ${ed?plEditorHTML(ed):''}
-  <section class="sec"><h3 class="sec-t" style="font-size:1.2rem">Tus plantillas de sesión</h3>
-   ${PL.length?`<div class="pl-lista">${PL.map(p=>{const u=usosPl(p.id);return `<article class="pl-card ${ed&&ed.id===p.id?'on':''}"><b>${esc(p.nombre||'Sin nombre')}</b><span>${nEjPl(p)} ejercicios · ${p.bloques.length} bloques</span><span>${u?`Asignada a ${u} ${u===1?'sesión':'sesiones'}`:'Sin asignar'}</span><div class="actions"><button class="btn ghost sm" data-pledit="${p.id}">Editar</button><button class="btn ghost sm" data-pldup="${p.id}">Duplicar</button></div></article>`;}).join('')}</div>`:'<p class="empty">Todavía no tienes plantillas. Crea la primera con «Nueva plantilla».</p>'}
+  <section class="acc-card"><div class="acc-head"><div><p class="eyebrow">${esc(dest.n)}</p><h2>Plantillas de este plan</h2></div>${ed?'':'<button class="btn" id="pl-nueva">Nueva plantilla</button>'}</div>
+   ${PL.length?`<div class="pl-lista">${PL.map(card).join('')}</div>`:'<p class="empty">Este plan todavía no tiene plantillas. Crea la primera o copia una de otro plan.</p>'}
+   ${otras.length?`<div class="pl-copiar"><div class="field"><label for="pl-copia-sel">Copiar una plantilla de otro plan</label><select id="pl-copia-sel"><option value="">Elige una plantilla</option>${Object.entries(grupos).map(([kk,L])=>`<optgroup label="${esc(nombrePlanK(kk))}">${L.map(p=>`<option value="${p.id}">${esc(p.nombre||'Sin nombre')}</option>`).join('')}</optgroup>`).join('')}</select></div><button class="btn ghost sm" id="pl-copia-ok">Copiar aquí</button></div>`:''}
+   ${sinPlan.length?`<div class="banner"><strong>Plantillas sin plan</strong>Estas plantillas no estaban asignadas a ningún programa. Pásalas al plan que corresponda.<div class="pl-lista" style="margin-top:10px">${sinPlan.map(p=>`<article class="pl-card"><b>${esc(p.nombre||'Sin nombre')}</b><span>${nEjPl(p)} ejercicios</span><div class="actions"><button class="btn ghost sm" data-plmover="${p.id}">Pasar a este plan</button></div></article>`).join('')}</div></div>`:''}
   </section>
-  ${prog}
+  <section class="acc-card" id="pl-prog"><p class="eyebrow">Semanas</p><h2>Qué sesión toca cada semana</h2>
+   <p class="sec-sub">${E.semanas} semanas × ${E.porSemana} sesiones · <b>${asig} de ${E.semanas*E.porSemana}</b> con plantilla · <b>${pub.length} de ${E.semanas}</b> semanas publicadas.${!dest.personal&&!(parseInt((dest.sub&&dest.sub.semanas)||dest.p.semanas)&&parseInt(dest.p.sesiones))?' Son semanas y sesiones de ejemplo: cámbialas en Contenido → Programas.':''}</p>
+   <div class="actions">${PL.length?'<button class="btn ghost sm" id="pl-todas">Repetir la semana 1 en todas</button>':''}<button class="btn ghost sm" id="pl-pub-todas">Publicar todas</button>${pub.length?'<button class="link" id="pl-pub-ninguna">Quitar todas las publicaciones</button>':''}${W.some(w=>(w||[]).some(Boolean))?'<button class="link" id="pl-vaciar">Vaciar</button>':''}</div>
+   <div class="pl-semanas">${semanas}</div>
+   <p class="sec-sub">Las sesiones sin plantilla usan la sesión por defecto de Contenido → Sesiones guiadas.</p></section>
  </section>`;}
 function bindPlanes(re){
- const g=id=>document.getElementById(id),PL=CONTENIDO.plantillas,ed=S.plEdit&&PL.find(x=>x.id===S.plEdit),guarda=()=>{guardarContenido();re();};
- const nuevoId=()=>'pl'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
- if(g('pl-nueva')) g('pl-nueva').onclick=()=>{const p={id:nuevoId(),nombre:'Nueva plantilla',nota:'',bloques:[{nombre:'Calentamiento',ejercicios:[]},{nombre:'Parte principal',ejercicios:[]},{nombre:'Vuelta a la calma',ejercicios:[]}]};PL.push(p);S.plEdit=p.id;S.plBorrar=false;guardarContenido();renderPanel();g('pl-ed').scrollIntoView();const n=document.getElementById('plf_nombre');if(n){n.focus();n.select();}};
- $app.querySelectorAll('[data-pledit]').forEach(b=>b.onclick=()=>{S.plEdit=b.dataset.pledit;S.plBorrar=false;renderPanel();g('pl-ed').scrollIntoView();});
- $app.querySelectorAll('[data-pldup]').forEach(b=>b.onclick=()=>{const o=PL.find(x=>x.id===b.dataset.pldup),c=JSON.parse(JSON.stringify(o));c.id=nuevoId();c.nombre=o.nombre+' (copia)';PL.splice(PL.indexOf(o)+1,0,c);S.plEdit=c.id;S.plBorrar=false;guardarContenido();renderPanel();g('pl-ed').scrollIntoView();});
- if(g('pl-dest')) g('pl-dest').onchange=()=>{S.plProg=g('pl-dest').value;re();};
- const dest=destinosPlan().find(d=>d.k===(g('pl-dest')||{}).value);
- if(dest){const E=estructuraProg(dest.p,dest.sub),W=()=>{const P=CONTENIDO.planes;P[dest.k]=P[dest.k]||[];for(let w=0;w<E.semanas;w++) P[dest.k][w]=P[dest.k][w]||[];return P[dest.k];};
-  $app.querySelectorAll('[data-asig]').forEach(el=>el.onchange=()=>{const [w,si]=el.dataset.asig.split('.').map(Number);W()[w][si]=el.value;guarda();});
-  $app.querySelectorAll('[data-plcopia]').forEach(b=>b.onclick=()=>{const w=+b.dataset.plcopia,M=W();M[w]=M[w-1].slice();guarda();});
-  if(g('pl-todas')) g('pl-todas').onclick=()=>{const M=W();for(let w=1;w<E.semanas;w++) M[w]=M[0].slice();guarda();};
-  if(g('pl-vaciar')) g('pl-vaciar').onclick=()=>{CONTENIDO.planes[dest.k]=[];guarda();};}
+ const g=id=>document.getElementById(id),D=destinosTodos(),dest=D.find(d=>d.k===S.plProg)||D[0];if(!dest) return;
+ const k=dest.k,PL=()=>CONTENIDO.plantillas=CONTENIDO.plantillas||[],ed=S.plEdit&&PL().find(x=>x.id===S.plEdit&&x.plan===k),guarda=()=>{guardarContenido();re();};
+ const E=estrPlan(k),W=()=>{const P=CONTENIDO.planes=CONTENIDO.planes||{};P[k]=P[k]||[];for(let w=0;w<E.semanas;w++) P[k][w]=P[k][w]||[];return P[k];};
+ const PUB=()=>{const P=CONTENIDO.publicadas=CONTENIDO.publicadas||{};return P[k]=P[k]||{};};
+ const abrir=p=>{S.plEdit=p.id;S.plBorrar=false;renderPanel();const x=g('pl-ed');if(x) x.scrollIntoView();};
+ g('pl-dest').onchange=()=>{S.plProg=g('pl-dest').value;S.plEdit=null;S.plPrev=null;re();};
+ if(g('pl-sems')) [g('pl-sems'),g('pl-por')].forEach(el=>el.onchange=()=>{const c=dest.c,sem=Math.min(52,Math.max(1,+g('pl-sems').value||4)),por=Math.min(7,Math.max(1,+g('pl-por').value||3));
+  c.estrP={semanas:sem,porSemana:por};conCuenta(c,guardarCuenta);nubeActualizar(c.sbPersonal,{semanas:sem,sesiones_semana:por});guarda();});
+ if(g('pl-nueva')) g('pl-nueva').onclick=()=>{const p={id:nuevoUUID(),plan:k,nombre:'Nueva plantilla',nota:'',bloques:[{nombre:'Calentamiento',ejercicios:[]},{nombre:'Parte principal',ejercicios:[]},{nombre:'Vuelta a la calma',ejercicios:[]}]};PL().push(p);guardarContenido();abrir(p);const n=g('plf_nombre');if(n){n.focus();n.select();}};
+ $app.querySelectorAll('[data-pledit]').forEach(b=>b.onclick=()=>abrir(PL().find(x=>x.id===b.dataset.pledit)));
+ $app.querySelectorAll('[data-pldup]').forEach(b=>b.onclick=()=>{const o=PL().find(x=>x.id===b.dataset.pldup),c=JSON.parse(JSON.stringify(o));c.id=nuevoUUID();c.nombre=o.nombre+' (copia)';PL().splice(PL().indexOf(o)+1,0,c);guardarContenido();abrir(c);});
+ if(g('pl-copia-ok')) g('pl-copia-ok').onclick=()=>{const o=PL().find(x=>x.id===g('pl-copia-sel').value);if(!o) return;const c=JSON.parse(JSON.stringify(o));c.id=nuevoUUID();c.plan=k;PL().push(c);guardarContenido();abrir(c);};
+ $app.querySelectorAll('[data-plmover]').forEach(b=>b.onclick=()=>{const p=PL().find(x=>x.id===b.dataset.plmover);if(p){p.plan=k;guarda();}});
+ $app.querySelectorAll('[data-asig]').forEach(el=>el.onchange=()=>{const [w,si]=el.dataset.asig.split('.').map(Number),M=W();M[w][si]=el.value;guarda();});
+ $app.querySelectorAll('[data-plcopia]').forEach(b=>b.onclick=()=>{const w=+b.dataset.plcopia,M=W();M[w]=M[w-1].slice();guarda();});
+ $app.querySelectorAll('[data-pub]').forEach(b=>b.onclick=()=>{const [w,on]=b.dataset.pub.split('.').map(Number),P=PUB();if(on) P[w]=new Date().toISOString();else delete P[w];guarda();});
+ $app.querySelectorAll('[data-plprev]').forEach(b=>b.onclick=()=>{const w=+b.dataset.plprev;S.plPrev=S.plPrev===w?null:w;re();});
+ if(g('pl-todas')) g('pl-todas').onclick=()=>{const M=W();for(let w=1;w<E.semanas;w++) M[w]=M[0].slice();guarda();};
+ g('pl-pub-todas').onclick=()=>{const P=PUB(),f=new Date().toISOString();for(let w=1;w<=E.semanas;w++) if(!P[w]) P[w]=f;guarda();};
+ if(g('pl-pub-ninguna')) g('pl-pub-ninguna').onclick=()=>{CONTENIDO.publicadas[k]={};guarda();};
+ if(g('pl-vaciar')) g('pl-vaciar').onclick=()=>{CONTENIDO.planes[k]=[];guarda();};
  if(!ed) return;
  const cerrar=()=>{S.plEdit=null;S.plBorrar=false;re();};
  g('pl-listo').onclick=cerrar;
- $app.querySelectorAll('[data-plf]').forEach(el=>el.onchange=()=>{const ks=el.dataset.plf.split('.'),last=ks.pop(),o=ks.reduce((a,k)=>a[k],ed),t=el.dataset.plt;let v=el.value;
+ $app.querySelectorAll('[data-plf]').forEach(el=>el.onchange=()=>{const ks=el.dataset.plf.split('.'),last=ks.pop(),o=ks.reduce((a,x)=>a[x],ed),t=el.dataset.plt;let v=el.value;
   if(t==='num') v=v===''?0:Math.max(0,+v);else if(t==='lista') v=v.split(',').map(x=>x.trim()).filter(Boolean);else if(last!=='nota') v=v.trim();
   if(last==='nombre'&&ks.length===0&&!v){el.value=ed.nombre;return;}
   o[last]=v;guardarContenido();if(last==='nombre'&&ks.length===0) re();});
@@ -3148,8 +3331,20 @@ function bindPlanes(re){
  g('pl-addb').onclick=()=>{ed.bloques.push({nombre:'Nuevo bloque',ejercicios:[]});guarda();};
  if(g('pl-del')) g('pl-del').onclick=()=>{S.plBorrar=true;re();};
  if(g('pl-del-no')) g('pl-del-no').onclick=()=>{S.plBorrar=false;re();};
- if(g('pl-del-ok')) g('pl-del-ok').onclick=()=>{const id=ed.id;CONTENIDO.plantillas=PL.filter(x=>x.id!==id);Object.values(CONTENIDO.planes).forEach(W=>W.forEach(w=>w.forEach((x,i)=>{if(x===id) w[i]='';})));guardarContenido();cerrar();};
+ if(g('pl-del-ok')) g('pl-del-ok').onclick=()=>{const id=ed.id;CONTENIDO.plantillas=PL().filter(x=>x.id!==id);Object.values(CONTENIDO.planes||{}).forEach(M=>M.forEach(w=>(w||[]).forEach((x,i)=>{if(x===id) w[i]='';})));guardarContenido();cerrar();};
 }
+
+/* ----- Cliente: sesiones del entrenamiento personal ----- */
+function semanaDesde(ini){return Math.max(1,Math.round((lunesDe(hoyProg())-lunesDe(ini||hoyISO()))/6048e5)+1);}
+function sesionesPersonalHTML(){const C=S.cuenta;if(!C.sbPersonal||C.estado!=='activo') return '';
+ const k='P:'+C.sbPersonal,E=estrPlan(k),pub=pubDe(k).filter(w=>w<=E.semanas);
+ if(!pub.length) return `<section class="acc-card" id="ses-pers"><p class="eyebrow">Tus sesiones</p><h2>Sesiones de tu plan</h2><p class="sec-sub">Tu entrenadora está preparando tus sesiones. Irán apareciendo aquí semana a semana.</p></section>`;
+ const act=Math.min(E.semanas,semanaDesde(C.inicioP)),abierta=pub.includes(act)?act:pub[pub.length-1];
+ return `<section class="sec" id="ses-pers"><div><p class="eyebrow">Tus sesiones</p><h2 class="sec-t">Sesiones de tu plan</h2><p class="sec-sub">${pub.length} de ${E.semanas} semanas publicadas · ${E.porSemana} sesiones por semana</p></div><div class="sec" style="gap:8px">
+  ${[...Array(E.semanas)].map((_,wi)=>{const w=wi+1;if(!pub.includes(w)) return `<div class="week-d week-prox"><div class="wk-prox"><span>Semana ${w}</span><span>Próximamente</span></div></div>`;
+   const n=[...Array(E.porSemana)].filter((_,j)=>C.hechas[`P${w}-${j+1}`]).length;
+   return `<details class="week-d" ${w===abierta?'open':''}><summary>Semana ${w}<span>${n}/${E.porSemana}</span></summary><ul class="ses-list">${[...Array(E.porSemana)].map((_,j)=>{const key=`P${w}-${j+1}`;return sesFilaHTML(key,j+1,w);}).join('')}</ul></details>`;}).join('')}
+ </div></section>`;}
 /* ---------- Panel de negocio ---------- */
 const eur=n=>`${(Math.round(n*100)/100).toLocaleString('es-ES',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2})} €`;
 function datosNegocio(ej){
@@ -3750,11 +3945,11 @@ function hashTxt(t){let h=0x811c9dc5;for(const b of new TextEncoder().encode(t))
 async function entrarConSupabase(user,nombre){
  let fila=null;try{const r=await SB.from('usuario').select('rol,nombre').eq('id_usuario',user.id).maybeSingle();fila=r.data;}catch(e){}
  S.lf={};S.loginAviso='';const d=S.despues;S.despues=null;
- if(fila&&fila.rol==='entrenadora'){ponerSesion('admin');contenidoBajar();mediaSubirTodo();ir(d==='panel'||d==='cuenta'||!d?'panel':d);return;}
+ if(fila&&fila.rol==='entrenadora'){ponerSesion('admin');contenidoBajar();planesBajar();mediaSubirTodo();ir(d==='panel'||d==='cuenta'||!d?'panel':d);return;}
  const nom=nombre||(fila&&fila.nombre)||(user.user_metadata&&user.user_metadata.nombre)||'';
  let c=cuentaObj(user.id);
  if(!c){const prev=S.cuenta;
-  if(prev&&(prev.id==='anon'||!prev.auth)&&(prev.prog||prev.solProg||prev.entrenador||(prev.packs||[]).length)){delete DB.cuentas[prev.id];delete OBJ[prev.id];prev.id=user.id;OBJ[user.id]=prev;c=prev;}
+  if(prev&&(prev.id==='anon'||!prev.auth)&&(prev.prog||prev.solProg||prev.entrenador||prev.cuestIni||(prev.packs||[]).length)){delete DB.cuentas[prev.id];delete OBJ[prev.id];prev.id=user.id;OBJ[user.id]=prev;c=prev;}
   else c=nuevaCuenta(user.id);
   c.alta=c.alta||hoyISO();}
  c.auth={nombre:nom,email:user.email,sb:true};
@@ -3764,10 +3959,10 @@ async function entrarConSupabase(user,nombre){
   if(pend.tipo==='personal'&&pend.solicitud) Object.assign(c,{entrenador:true,estado:'pendiente',sbPersonal:null,solicitud:pend.solicitud,fecha:new Date().toISOString(),plan:'',registros:[],mensajes:[]});}
  if(pend) SB.auth.updateUser({data:{pendiente:null}}).catch(()=>{});
  usarCuenta(c);if(!S.resp.general.nombre&&nom) S.resp.general.nombre=nom;guardarCuenta();
- ponerSesion('cliente');ir(d&&d!=='panel'?d:'cuenta');
+ ponerSesion('cliente');planesBajar();ir(d&&d!=='panel'?d:'cuenta');
 }
 // Al abrir la web: si la sesión de Supabase ya no existe, se cierra también aquí
-if(SB){contenidoBajar();SB.auth.getSession().then(({data})=>{if(!data.session&&S.sesion){cerrarSesion();}else if(S.sesion==='admin') mediaSubirTodo();}).catch(()=>{});
+if(SB){try{migrarPlanes();}catch(e){console.warn(e);}contenidoBajar();if(S.sesion) planesBajar();SB.auth.getSession().then(({data})=>{if(!data.session&&S.sesion){cerrarSesion();}else if(S.sesion==='admin') mediaSubirTodo();}).catch(()=>{});
  SB.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY'){S.cambiarPass=true;ir('login');}});}
 
 /* ---------- Supabase: solicitudes y contrataciones (paso 2) ---------- */
@@ -3775,11 +3970,45 @@ if(SB){contenidoBajar();SB.auth.getSession().then(({data})=>{if(!data.session&&S
 function idsPrograma(id,sub){const pr=todosProgramas().find(x=>x.id===id);return (sub&&pr&&pr.subplanes)?{id_subplan:`${id}-${sub}`}:{id_programa:id};}
 function progDeFila(f,subs){if(f.id_subplan){const s=subs[f.id_subplan];return {id:s?s.id_programa:f.id_subplan.split('-')[0],sub:f.id_subplan.slice(((s&&s.id_programa)||f.id_subplan.split('-')[0]).length+1)};}return {id:f.id_programa,sub:null};}
 let NUBE_T=0,NUBE_EN=false;
+const TEC_RUTA={};   // vídeo de técnica → ruta en el espacio privado de Supabase
+const ajustesDe=C=>({dias_entreno:(C.diasSel&&C.diasSel.length)?C.diasSel.slice().sort((a,b)=>a-b):null,estado:C.pausa?'en pausa':'activa',motivo_pausa:C.pausa?C.pausa.motivo||null:null,fecha_pausa:C.pausa?C.pausa.desde||null:null,fecha_inicio:C.inicio||null});
+const movidasDe=(C,ct)=>Object.entries(C.mov||{}).filter(([k,d])=>/^\d+-\d+$/.test(k)&&d!=null).map(([k,d])=>{const [w,n]=k.split('-').map(Number);return {id_contratacion:ct,semana:w,num_sesion:n,dia_semana:+d};}).sort((a,b)=>a.semana-b.semana||a.num_sesion-b.num_sesion);
+// Cliente → Supabase: días, pausa, sesiones movidas, cuestionario inicial y vídeos de técnica
+async function clienteAjustesSubir(C,pc,uid){
+ if(pc){const a=ajustesDe(C),h=hashJ(a);
+  if(C.sbAj!==h){const {error}=await SB.from('contratacion').update(a).eq('id_contratacion',pc);if(!error){C.sbAj=h;guardarCuenta();}else console.warn('Supabase ajustes:',error.message);}
+  const M=movidasDe(C,pc),hm=hashJ(M);
+  if(C.sbMov!==hm){const d=await SB.from('sesion_movida').delete().eq('id_contratacion',pc);const i=!d.error&&M.length?await SB.from('sesion_movida').insert(M):{error:d.error};if(!i.error){C.sbMov=hm;guardarCuenta();}}}
+ const ci=C.cuestIni;
+ if(ci&&ci.resp){const h=hashJ(ci.resp);
+  if(!ci.sb){const {data,error}=await SB.from('cuestionario').insert({id_usuario:uid,tipo:'general',momento:'inicio',respuestas:ci.resp}).select('id_cuestionario').single();if(!error&&data){ci.sb=data.id_cuestionario;ci.h=h;guardarCuenta();}}
+  else if(ci.h!==h){const {error}=await SB.from('cuestionario').update({respuestas:ci.resp,fecha:new Date().toISOString()}).eq('id_cuestionario',ci.sb);if(!error){ci.h=h;guardarCuenta();}}}
+ if(C.sbPersonal) for(const t of (C.tecnica||[])){if(t.sb) continue;
+  const blob=await new Promise(ok=>mediaDB().then(db=>{const r=db.transaction('m').objectStore('m').get('tec-'+t.id);r.onsuccess=()=>ok(r.result||null);r.onerror=()=>ok(null);}).catch(()=>ok(null)));if(!blob) continue;
+  const ext=((t.archivo&&t.archivo.nombre)||'').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'')||'mp4',ruta=`${uid}/${t.id}.${ext}`;
+  const up=await SB.storage.from('tecnica').upload(ruta,blob,{upsert:true,contentType:blob.type||'video/mp4'});if(up.error){console.warn('Supabase vídeo:',up.error.message);continue;}
+  const {data,error}=await SB.from('video_tecnica').insert({id_contratacion:C.sbPersonal,ejercicio_nombre:t.ej||null,fecha:t.fecha,archivo_url:ruta,comentario:t.com||null,estado:'pendiente'}).select('id_video_tecnica').single();
+  if(!error&&data){t.sb=data.id_video_tecnica;t.ruta=ruta;TEC_RUTA[t.id]=ruta;guardarCuenta();}}}
+// Supabase → cuenta: lo mismo de vuelta (en el panel siempre; en el cliente solo lo que este dispositivo no tenga)
+function clienteAjustesBajar(c,KS,QS,MV,VT){const admin=S.sesion==='admin';let cambio=false;const ant=hashJ([c.diasSel,c.pausa,c.mov,c.inicio,c.cuestIni,c.tecnica]);
+ const pk=c.prog&&c.prog.sb&&KS.find(k=>k.id_contratacion===c.prog.sb);
+ if(pk&&(admin||c.sbAj===undefined)){c.diasSel=pk.dias_entreno||[];c.pausa=pk.estado==='en pausa'?{desde:pk.fecha_pausa||hoyISO(),motivo:pk.motivo_pausa||''}:null;if(pk.fecha_inicio) c.inicio=pk.fecha_inicio;
+  if(!admin) c.sbAj=hashJ(ajustesDe(c));}
+ if(pk&&(admin||c.sbMov===undefined)){c.mov={};MV.filter(m=>m.id_contratacion===pk.id_contratacion).forEach(m=>{c.mov[`${m.semana}-${m.num_sesion}`]=m.dia_semana;});if(!admin) c.sbMov=hashJ(movidasDe(c,pk.id_contratacion));}
+ const qi=QS.filter(q=>q.id_usuario===c.id&&q.tipo==='general'&&!q.id_contratacion).sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha)))[0];
+ if(qi&&(admin||!c.cuestIni||!c.cuestIni.sb)){c.cuestIni={resp:qi.respuestas,sb:qi.id_cuestionario,h:hashJ(qi.respuestas),fecha:qi.fecha};
+  if(!admin&&S.cuenta===c&&!tieneResp(S.resp.general)) S.resp.general={...S.resp.general,...qi.respuestas};}
+ if(c.sbPersonal){c.tecnica=c.tecnica||[];
+  VT.filter(v=>v.id_contratacion===c.sbPersonal).forEach(v=>{let t=c.tecnica.find(x=>x.sb===v.id_video_tecnica);
+   if(!t){t={id:v.id_video_tecnica,sb:v.id_video_tecnica,fecha:v.fecha,ej:v.ejercicio_nombre||'',com:v.comentario||'',archivo:{nombre:''},estado:'pendiente',corr:'',demo:''};c.tecnica.push(t);}
+   TEC_RUTA[t.id]=v.archivo_url;Object.assign(t,{estado:v.estado||'pendiente',corr:v.correccion||'',demo:v.id_ejercicio||t.demo||''});});}
+ if(hashJ([c.diasSel,c.pausa,c.mov,c.inicio,c.cuestIni,c.tecnica])!==ant) cambio=true;return cambio;}
 async function nubeSync(forzar){
  if(!SB||NUBE_EN||!S.sesion) return;if(!forzar&&Date.now()-NUBE_T<15000) return;
  NUBE_EN=true;NUBE_T=Date.now();let cambio=false;
  try{
   const {data:ses}=await SB.auth.getSession();if(!ses.session){NUBE_EN=false;return;}
+  if(S.sesion==='cliente'&&Date.now()-PLN.tB>120000) planesBajar();   // semanas nuevas publicadas
   // 1) Subir lo que el cliente tenga pendiente de enviar
   if(S.sesion==='cliente'&&S.cuenta.id===ses.session.user.id){const C=S.cuenta,uid=C.id;
    if(C.solProg&&!C.solProg.sb){const {data,error}=await SB.from('contratacion').insert({id_usuario:uid,tipo:'programa',estado:'solicitada',...idsPrograma(C.solProg.id,C.solProg.sub)}).select('id_contratacion').single();
@@ -3787,10 +4016,10 @@ async function nubeSync(forzar){
    if(C.entrenador&&C.estado==='pendiente'&&!C.sbPersonal&&C.solicitud){const {data,error}=await SB.from('contratacion').insert({id_usuario:uid,tipo:'personal',estado:'solicitada',id_modalidad_personal:C.solicitud.modalidad||'online'}).select('id_contratacion').single();
     if(!error&&data){C.sbPersonal=data.id_contratacion;await SB.from('cuestionario').insert({id_usuario:uid,id_contratacion:data.id_contratacion,tipo:'personal',momento:'inicio',respuestas:C.solicitud});guardarCuenta();}}
    // Sesiones hechas (con RPE y valoración), pesos de cada serie y registros semanales
-   const pc=C.prog&&C.prog.sb;
-   if(pc){C.sbSes=C.sbSes||{};
-    for(const [k,v] of Object.entries(C.hechas||{})){if(!v||!/^\d+-\d+$/.test(k)) continue;const [w,n]=k.split('-').map(Number),r=(C.rpe||{})[k],val=(C.valor||{})[k];
-     const fila={id_contratacion:pc,semana:w,num_sesion:n,fecha:String((C.hechasFecha||{})[k]||(r&&r.fecha)||hoyISO()).slice(0,10),version:v==='exp'?'expres':'completa',rpe:r?Math.round(+r.rpe):null,valoracion:val&&val.estrellas?+val.estrellas:null,comentario:(val&&val.com)||null},h=JSON.stringify(fila);
+   const pc=C.prog&&C.prog.sb,pp=C.sbPersonal&&C.estado==='activo'?C.sbPersonal:null;
+   if(pc||pp){C.sbSes=C.sbSes||{};
+    for(const [k,v] of Object.entries(C.hechas||{})){if(!v||!/^P?\d+-\d+$/.test(k)) continue;const ct=k[0]==='P'?pp:pc;if(!ct) continue;const [w,n]=k.replace(/^P/,'').split('-').map(Number),r=(C.rpe||{})[k],val=(C.valor||{})[k],plt=plantillaDe(k);
+     const fila={id_contratacion:ct,id_plantilla_sesion:plt&&ES_UUID(plt.id)?plt.id:null,semana:w,num_sesion:n,fecha:String((C.hechasFecha||{})[k]||(r&&r.fecha)||hoyISO()).slice(0,10),version:v==='exp'?'expres':'completa',rpe:r?Math.round(+r.rpe):null,valoracion:val&&val.estrellas?+val.estrellas:null,comentario:(val&&val.com)||null},h=JSON.stringify(fila);
      if(!C.sbSes[k]){const {data,error}=await SB.from('sesion_realizada').upsert(fila,{onConflict:'id_contratacion,semana,num_sesion'}).select('id_sesion_realizada').single();if(!error&&data){C.sbSes[k]={id:data.id_sesion_realizada,h};guardarCuenta();}}
      else if(C.sbSes[k].h!==h){const {error}=await SB.from('sesion_realizada').update(fila).eq('id_sesion_realizada',C.sbSes[k].id);if(!error){C.sbSes[k].h=h;guardarCuenta();}}}
     for(const [k,o] of Object.entries(C.sbSes)) if(!(C.hechas||{})[k]){const {error}=await SB.from('sesion_realizada').delete().eq('id_sesion_realizada',o.id);if(!error){delete C.sbSes[k];(C.cargas||[]).forEach(x=>{if(x.ses===k) delete x.sb;});guardarCuenta();}}
@@ -3798,12 +4027,13 @@ async function nubeSync(forzar){
      const num=v=>v===''||v==null||isNaN(+v)?null:+v;
      const {data,error}=await SB.from('registro_carga').insert({id_sesion_realizada:ss.id,ejercicio_nombre:x.nombre||String(x.ej||'').replace(/^n:/,'')||'Ejercicio',serie:Math.max(1,+x.serie||1),peso_kg:num(x.peso),repeticiones:num(x.reps)==null?null:Math.round(num(x.reps)),esfuerzo:{facil:'facil',justo:'justo',duro:'muy duro'}[x.esf]||null}).select('id_registro_carga').single();
      if(!error&&data){x.sb=data.id_registro_carga;guardarCuenta();}}}
+   await clienteAjustesSubir(C,pc,uid);
    if(C.sbPersonal){for(const r of (C.registros||[])){if(r.sb) continue;
      const {data,error}=await SB.from('registro_semanal').insert({id_contratacion:C.sbPersonal,semana:+r.semana||1,fecha:r.fecha,sensacion:r.sens?+r.sens:null,rpe:r.rpe!=null&&r.rpe!==''?Math.round(+r.rpe):null,molestia:r.mol==='si',molestia_detalle:r.molTxt||null,comentario:r.com||null}).select('id_registro_semanal').single();
      if(!error&&data){r.sb=data.id_registro_semanal;guardarCuenta();}}}
   }
   // 2) Leer (cada uno ve lo que le permite la seguridad de Supabase: el cliente lo suyo, la entrenadora todo)
-  const [U,K,Q,SP,SR,RC,RS]=await Promise.all([SB.from('usuario').select('*'),SB.from('contratacion').select('*').order('id_contratacion'),SB.from('cuestionario').select('*'),SB.from('subplan').select('id_subplan,id_programa'),SB.from('sesion_realizada').select('*'),SB.from('registro_carga').select('*'),SB.from('registro_semanal').select('*')]);
+  const [U,K,Q,SP,SR,RC,RS,MV,VT]=await Promise.all([SB.from('usuario').select('*'),SB.from('contratacion').select('*').order('id_contratacion'),SB.from('cuestionario').select('*'),SB.from('subplan').select('id_subplan,id_programa'),SB.from('sesion_realizada').select('*'),SB.from('registro_carga').select('*'),SB.from('registro_semanal').select('*'),SB.from('sesion_movida').select('*'),SB.from('video_tecnica').select('*')]);
   if(U.error||K.error) throw (U.error||K.error);
   const subs={};(SP.data||[]).forEach(x=>subs[x.id_subplan]=x);
   const resp={};(Q.data||[]).forEach(q=>{if(q.id_contratacion) resp[q.id_contratacion]=q;});
@@ -3814,23 +4044,27 @@ async function nubeSync(forzar){
    (K.data||[]).filter(k=>k.id_usuario===u.id_usuario).forEach(k=>{const q=resp[k.id_contratacion];
     if(k.tipo==='programa'){const pg=progDeFila(k,subs);
      if(k.estado==='solicitada'&&!c.prog&&!(c.solProg&&c.solProg.sb===k.id_contratacion)){c.solProg={id:pg.id,sub:pg.sub,fecha:c.solProg&&c.solProg.fecha||new Date().toISOString(),origen:q?q.tipo:null,resp:q?q.respuestas:null,sb:k.id_contratacion};cambio=true;}
-     if(k.estado==='activa'&&(!c.prog||c.prog.id!==pg.id)){c.prog={id:pg.id,sub:pg.sub,origen:q?q.tipo:null,resp:q?q.respuestas:null,sb:k.id_contratacion};c.inicio=k.fecha_inicio||hoyISO();c.hechas=c.hechas||{};c.solProg=null;cambio=true;}
+     if(['activa','en pausa'].includes(k.estado)&&(!c.prog||c.prog.id!==pg.id)){c.prog={id:pg.id,sub:pg.sub,origen:q?q.tipo:null,resp:q?q.respuestas:null,sb:k.id_contratacion};c.inicio=k.fecha_inicio||hoyISO();c.hechas=c.hechas||{};c.solProg=null;cambio=true;}
      if(['terminada'].includes(k.estado)&&c.solProg&&c.solProg.sb===k.id_contratacion){c.solProg=null;cambio=true;}}
     else{
      if(!c.entrenador||c.sbPersonal!==k.id_contratacion){Object.assign(c,{entrenador:true,sbPersonal:k.id_contratacion,solicitud:q?q.respuestas:(c.solicitud||{modalidad:k.id_modalidad_personal}),fecha:c.fecha||new Date().toISOString(),registros:c.registros||[],mensajes:c.mensajes||[]});cambio=true;}
      const est=k.estado==='activa'?'activo':k.estado==='solicitada'?'pendiente':k.estado;if(c.estado!==est){c.estado=est;cambio=true;}
-     if(k.plan_personal&&c.plan!==k.plan_personal){c.plan=k.plan_personal;c.planEnviado=c.planEnviado||new Date().toISOString();cambio=true;}}
+     if(k.plan_personal&&c.plan!==k.plan_personal){c.plan=k.plan_personal;c.planEnviado=c.planEnviado||new Date().toISOString();cambio=true;}
+     const eP=k.semanas||k.sesiones_semana?{semanas:k.semanas||4,porSemana:k.sesiones_semana||3}:null;if(hashJ(eP)!==hashJ(c.estrP||null)){c.estrP=eP;cambio=true;}
+     if(k.fecha_inicio&&c.inicioP!==k.fecha_inicio){c.inicioP=k.fecha_inicio;cambio=true;}}
    });
+   if(clienteAjustesBajar(c,(K.data||[]).filter(k=>k.id_usuario===u.id_usuario),Q.data||[],MV.data||[],VT.data||[])) cambio=true;
    // Reconstruir el seguimiento desde Supabase (siempre en el panel; en el cliente, solo si este dispositivo no lo tiene)
-   if(c.prog&&c.prog.sb&&(S.sesion==='admin'||!c.sbSes||!Object.keys(c.sbSes).length)){
-    const ses=(SR.data||[]).filter(r=>r.id_contratacion===c.prog.sb&&r.semana&&r.num_sesion);
+   const pcs=[c.prog&&c.prog.sb,c.sbPersonal].filter(Boolean);
+   if(pcs.length&&(S.sesion==='admin'||!c.sbSes||!Object.keys(c.sbSes).length)){
+    const ses=(SR.data||[]).filter(r=>pcs.includes(r.id_contratacion)&&r.semana&&r.num_sesion);
     if(ses.length||S.sesion==='admin'){
      const H={},HF={},RP={},VA={},SS={},CA=[];
-     ses.forEach(r=>{const k=`${r.semana}-${r.num_sesion}`;H[k]=r.version==='expres'?'exp':true;HF[k]=r.fecha;if(r.rpe!=null) RP[k]={rpe:r.rpe,fecha:r.fecha+'T12:00:00.000Z',exp:r.version==='expres'};
+     ses.forEach(r=>{const k=`${r.id_contratacion===c.sbPersonal&&!(c.prog&&c.prog.sb===r.id_contratacion)?'P':''}${r.semana}-${r.num_sesion}`;H[k]=r.version==='expres'?'exp':true;HF[k]=r.fecha;if(r.rpe!=null) RP[k]={rpe:r.rpe,fecha:r.fecha+'T12:00:00.000Z',exp:r.version==='expres'};
       if(r.valoracion) VA[k]={estrellas:r.valoracion,com:r.comentario||'',fecha:r.fecha+'T12:00:00.000Z',titulo:tituloClave(k)};SS[k]={id:r.id_sesion_realizada,h:''};
       (RC.data||[]).filter(x=>x.id_sesion_realizada===r.id_sesion_realizada).sort((a,b)=>a.serie-b.serie).forEach(x=>CA.push({ej:'n:'+String(x.ejercicio_nombre||'').toLowerCase(),nombre:x.ejercicio_nombre||'',serie:x.serie,peso:x.peso_kg==null?'':+x.peso_kg,reps:x.repeticiones==null?'':x.repeticiones,esf:{facil:'facil',justo:'justo','muy duro':'duro'}[x.esfuerzo]||'',run:r.id_sesion_realizada,fecha:r.fecha+'T12:00:00.000Z',ses:k,sb:x.id_registro_carga}));});
      const ant=JSON.stringify([c.hechas,c.rpe,c.valor,c.cargas]);
-     Object.assign(c,{hechas:H,hechasFecha:HF,rpe:RP,valor:{...Object.fromEntries(Object.entries(c.valor||{}).filter(([k])=>!/^\d+-\d+$/.test(k))),...VA},cargas:CA,sbSes:Object.fromEntries(Object.entries(SS).map(([k,o])=>[k,{id:o.id,h:''}]))});
+     Object.assign(c,{hechas:H,hechasFecha:HF,rpe:RP,valor:{...Object.fromEntries(Object.entries(c.valor||{}).filter(([k])=>!/^P?\d+-\d+$/.test(k))),...VA},cargas:CA,sbSes:Object.fromEntries(Object.entries(SS).map(([k,o])=>[k,{id:o.id,h:''}]))});
      const ult=Object.values(HF).sort().pop();if(ult) c.ultimo=ult;
      if(JSON.stringify([c.hechas,c.rpe,c.valor,c.cargas])!==ant) cambio=true;}}
    if(c.sbPersonal&&(S.sesion==='admin'||!(c.registros||[]).some(r=>r.sb))){
@@ -4432,6 +4666,7 @@ function renderResPersonal(){
 }
 function renderResultado(){
  const r=S.resp.general,nombre=(r.nombre||'').trim();
+ if(S.sesion!=='admin'&&tieneResp(r)){const prev=S.cuenta.cuestIni||{};S.cuenta.cuestIni={...prev,resp:JSON.parse(JSON.stringify(r)),fecha:new Date().toISOString()};guardarCuenta();}
  const lesion=r.lesion==='si',detalle=(r.lesionDetalle||'').trim();
  const parq=r.parq.some(v=>v===true);
  const entrenador=lesion||parq;
