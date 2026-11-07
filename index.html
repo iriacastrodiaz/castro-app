@@ -1193,7 +1193,31 @@ function migrarTarifas(){try{const T=CONTENIDO.directo.tarifas;if(T.some(t=>/^bo
 try{const x=JSON.parse(localStorage.getItem('cv-contenido'));if(x&&typeof x==='object') Object.keys(x).forEach(k=>{if(k in CONTENIDO) CONTENIDO[k]=x[k];});}catch(e){}
 migrarTarifas();
 (()=>{const pc=CONTENIDO.programas.find(x=>x.id==='pilates');if(pc&&pc.nombre==='Pilates') pc.nombre='Entrena conmigo';if(pc&&/pilates/i.test(pc.para||'')) pc.para=CONTENIDO_ORIG.programas.find(x=>x.id==='pilates').para;})();
-function guardarContenido(){try{localStorage.setItem('cv-contenido',JSON.stringify(CONTENIDO));return true;}catch(e){return false;}}
+function guardarContenido(){let ok=true;try{localStorage.setItem('cv-contenido',JSON.stringify(CONTENIDO));}catch(e){ok=false;}contenidoSubir();return ok;}
+/* ---------- Contenido del panel en Supabase (tabla contenido_web + archivos en Storage) ---------- */
+const CONT_LOCAL=['migMujer','migSimple'];   // marcas internas de este navegador: no se suben
+let CONT_SUBIDO={},CONT_T=null,CONT_LISTO=false;
+function contenidoSubir(){if(!SB||S.sesion!=='admin'||!CONT_LISTO) return;clearTimeout(CONT_T);CONT_T=setTimeout(async()=>{
+ const filas=Object.keys(CONTENIDO).filter(k=>!CONT_LOCAL.includes(k)).map(k=>({clave:k,valor:CONTENIDO[k]??null,j:JSON.stringify(CONTENIDO[k]??null)})).filter(f=>CONT_SUBIDO[f.clave]!==f.j);
+ if(!filas.length) return;
+ const {error}=await SB.from('contenido_web').upsert(filas.map(f=>({clave:f.clave,valor:f.valor,actualizado:new Date().toISOString()})));
+ if(error){console.warn('Supabase contenido:',error.message);S.avisoEmail='No se ha podido guardar en la nube. Se reintentará al guardar de nuevo.';}
+ else filas.forEach(f=>CONT_SUBIDO[f.clave]=f.j);},700);}
+async function contenidoBajar(){if(!SB) return;
+ try{const {data,error}=await SB.from('contenido_web').select('clave,valor');if(error) throw error;
+  let cambio=false;(data||[]).forEach(r=>{if(CONT_LOCAL.includes(r.clave)) return;const j=JSON.stringify(r.valor);CONT_SUBIDO[r.clave]=j;if(JSON.stringify(CONTENIDO[r.clave]??null)!==j){CONTENIDO[r.clave]=r.valor;cambio=true;}});
+  CONT_LISTO=true;
+  if(cambio){try{localStorage.setItem('cv-contenido',JSON.stringify(CONTENIDO));}catch(e){}if(typeof aplicarPrecios==='function'){const y=window.scrollY;render();window.scrollTo(0,y);}}
+  if(!(data||[]).length&&S.sesion==='admin') contenidoSubir();   // primera vez: sube lo que hay en este navegador
+ }catch(e){console.warn('Supabase contenido:',e&&e.message||e);setTimeout(contenidoBajar,20000);}}   // sin conexión: no se sube nada hasta poder comparar con la nube
+const MEDIA_NUBE=k=>!/^tec-/.test(k);   // los vídeos de técnica de los clientes no van al espacio público
+// Sube una vez las fotos y vídeos que la entrenadora ya tenía guardados en este navegador
+function mediaSubirTodo(){if(!SB) return;try{if(localStorage.getItem('cv-media-subido')) return;}catch(e){}
+ mediaDB().then(db=>{const st=db.transaction('m').objectStore('m'),r=st.getAllKeys();r.onsuccess=async()=>{
+  for(const k of (r.result||[]).filter(k=>MEDIA_NUBE(String(k)))){const b=await new Promise(ok=>{const g=db.transaction('m').objectStore('m').get(k);g.onsuccess=()=>ok(g.result);g.onerror=()=>ok(null);});
+   if(b){const {error}=await SB.storage.from('contenido').upload(String(k),b,{upsert:true,contentType:b.type||undefined});if(error){console.warn('Supabase archivo:',error.message);return;}}}
+  try{localStorage.setItem('cv-media-subido','1');}catch(e){}};}).catch(()=>{});}
+function mediaURLPublica(k){return `${SB_URL}/storage/v1/object/public/contenido/${encodeURIComponent(k)}`;}
 const PASOS=[
  {eyebrow:'Sobre ti',titulo:'Empecemos por conocerte',intro:'Con esto podremos orientarte hacia la opción que mejor te encaja.',campos:[
   {id:'nombre',tipo:'texto',label:'¿Cómo te llamas?',opcional:true,ph:'Tu nombre (opcional)'},
@@ -2922,9 +2946,9 @@ function ejDe(x){if(!x) return null;if(typeof x==='string') return ejPorNombre(x
 // Vídeos subidos: se guardan en el navegador (IndexedDB). En la versión real irán a tu servidor.
 const MEDIA={db:null,urls:{}};
 function mediaDB(){return new Promise((ok,ko)=>{if(MEDIA.db) return ok(MEDIA.db);try{const r=indexedDB.open('castro-media',1);r.onupgradeneeded=()=>r.result.createObjectStore('m');r.onsuccess=()=>{MEDIA.db=r.result;ok(r.result);};r.onerror=()=>ko(r.error);}catch(e){ko(e);}});}
-function mediaPut(k,blob){return mediaDB().then(db=>new Promise((ok,ko)=>{const t=db.transaction('m','readwrite');t.objectStore('m').put(blob,k);t.oncomplete=()=>{if(MEDIA.urls[k]){URL.revokeObjectURL(MEDIA.urls[k]);delete MEDIA.urls[k];}ok();};t.onerror=()=>ko(t.error);}));}
-function mediaGet(k){if(MEDIA.urls[k]) return Promise.resolve(MEDIA.urls[k]);return mediaDB().then(db=>new Promise((ok,ko)=>{const r=db.transaction('m').objectStore('m').get(k);r.onsuccess=()=>{if(!r.result) return ok(null);MEDIA.urls[k]=URL.createObjectURL(r.result);ok(MEDIA.urls[k]);};r.onerror=()=>ko(r.error);}));}
-function mediaDel(k){if(MEDIA.urls[k]){URL.revokeObjectURL(MEDIA.urls[k]);delete MEDIA.urls[k];}return mediaDB().then(db=>{db.transaction('m','readwrite').objectStore('m').delete(k);}).catch(()=>{});}
+function mediaPut(k,blob){if(SB&&S.sesion==='admin'&&MEDIA_NUBE(k)) SB.storage.from('contenido').upload(k,blob,{upsert:true,contentType:blob.type||undefined}).then(({error})=>{if(error) console.warn('Supabase archivo:',error.message);});return mediaDB().then(db=>new Promise((ok,ko)=>{const t=db.transaction('m','readwrite');t.objectStore('m').put(blob,k);t.oncomplete=()=>{if(MEDIA.urls[k]){URL.revokeObjectURL(MEDIA.urls[k]);delete MEDIA.urls[k];}ok();};t.onerror=()=>ko(t.error);}));}
+function mediaGet(k){if(MEDIA.urls[k]) return Promise.resolve(MEDIA.urls[k]);return mediaDB().then(db=>new Promise((ok,ko)=>{const r=db.transaction('m').objectStore('m').get(k);r.onsuccess=()=>{if(!r.result){if(!SB||!MEDIA_NUBE(k)) return ok(null);const u=mediaURLPublica(k);return fetch(u,{method:'HEAD'}).then(x=>{if(x.ok){MEDIA.urls[k]=u;ok(u);}else ok(null);}).catch(()=>ok(null));}MEDIA.urls[k]=URL.createObjectURL(r.result);ok(MEDIA.urls[k]);};r.onerror=()=>ko(r.error);}));}
+function mediaDel(k){if(SB&&S.sesion==='admin'&&MEDIA_NUBE(k)) SB.storage.from('contenido').remove([k]).catch(()=>{});if(MEDIA.urls[k]){URL.revokeObjectURL(MEDIA.urls[k]);delete MEDIA.urls[k];}return mediaDB().then(db=>{db.transaction('m','readwrite').objectStore('m').delete(k);}).catch(()=>{});}
 function embedURL(u){let m=u.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,})/);if(m) return 'https://www.youtube-nocookie.com/embed/'+m[1]+'?rel=0';m=u.match(/vimeo\.com\/(?:video\/)?(\d+)/);if(m) return 'https://player.vimeo.com/video/'+m[1];return null;}
 const demoVacio=(txt)=>`<span class="thumb"><span class="play" aria-hidden="true"></span></span>${txt?`<span class="pend">${txt}</span>`:''}`;
 function demoHTML(ej,cls){return `<div class="demo ${cls||''}" data-demo="${ej?esc(ej.id):''}">${demoVacio(ej&&(ej.archivo||ej.enlace)?'':'demo pendiente')}</div>`;}
@@ -3726,7 +3750,7 @@ function hashTxt(t){let h=0x811c9dc5;for(const b of new TextEncoder().encode(t))
 async function entrarConSupabase(user,nombre){
  let fila=null;try{const r=await SB.from('usuario').select('rol,nombre').eq('id_usuario',user.id).maybeSingle();fila=r.data;}catch(e){}
  S.lf={};S.loginAviso='';const d=S.despues;S.despues=null;
- if(fila&&fila.rol==='entrenadora'){ponerSesion('admin');ir(d==='panel'||d==='cuenta'||!d?'panel':d);return;}
+ if(fila&&fila.rol==='entrenadora'){ponerSesion('admin');contenidoBajar();mediaSubirTodo();ir(d==='panel'||d==='cuenta'||!d?'panel':d);return;}
  const nom=nombre||(fila&&fila.nombre)||(user.user_metadata&&user.user_metadata.nombre)||'';
  let c=cuentaObj(user.id);
  if(!c){const prev=S.cuenta;
@@ -3743,7 +3767,7 @@ async function entrarConSupabase(user,nombre){
  ponerSesion('cliente');ir(d&&d!=='panel'?d:'cuenta');
 }
 // Al abrir la web: si la sesión de Supabase ya no existe, se cierra también aquí
-if(SB){SB.auth.getSession().then(({data})=>{if(!data.session&&S.sesion){cerrarSesion();}}).catch(()=>{});
+if(SB){contenidoBajar();SB.auth.getSession().then(({data})=>{if(!data.session&&S.sesion){cerrarSesion();}else if(S.sesion==='admin') mediaSubirTodo();}).catch(()=>{});
  SB.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY'){S.cambiarPass=true;ir('login');}});}
 
 /* ---------- Supabase: solicitudes y contrataciones (paso 2) ---------- */
