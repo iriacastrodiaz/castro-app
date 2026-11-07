@@ -1060,6 +1060,8 @@ button.esp{cursor:pointer}button.esp:hover{background:var(--accent)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
+/* La web oficial es la de Cloudflare: la copia de GitHub Pages redirige a ella */
+if(/github\.io$/.test(location.hostname)) location.replace('https://castro-app.iriacastrodiaz.workers.dev/'+location.hash);
 /* ---------- Supabase: cuentas de verdad ---------- */
 const SB_URL='https://rpdaorrcdbsgftpfplis.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwZGFvcnJjZGJzZ2Z0cGZwbGlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM4NzgzNzcsImV4cCI6MjEwOTQ1NDM3N30.WjbdzHvz0YK7Ecvf3bTWIp9CW5-G8uIeeXd3GlgWMXg'; // clave pública (anon): es seguro que esté en la web
@@ -3732,6 +3734,11 @@ async function entrarConSupabase(user,nombre){
   else c=nuevaCuenta(user.id);
   c.alta=c.alta||hoyISO();}
  c.auth={nombre:nom,email:user.email,sb:true};
+ const pend=user.user_metadata&&user.user_metadata.pendiente;
+ if(pend&&!c.prog&&!c.solProg&&!c.entrenador){
+  if(pend.tipo==='programa'&&pend.solProg) c.solProg={...pend.solProg,sb:null};
+  if(pend.tipo==='personal'&&pend.solicitud) Object.assign(c,{entrenador:true,estado:'pendiente',sbPersonal:null,solicitud:pend.solicitud,fecha:new Date().toISOString(),plan:'',registros:[],mensajes:[]});}
+ if(pend) SB.auth.updateUser({data:{pendiente:null}}).catch(()=>{});
  usarCuenta(c);if(!S.resp.general.nombre&&nom) S.resp.general.nombre=nom;guardarCuenta();
  ponerSesion('cliente');ir(d&&d!=='panel'?d:'cuenta');
 }
@@ -3868,7 +3875,8 @@ function renderLogin(){
    if(pass.length<8) return err('La contraseña debe tener al menos 8 caracteres.');
    if(!g('l-acepto').checked) return err('Tienes que aceptar las condiciones para crear la cuenta.');
    ocupado(true);
-   const {data,error}=await SB.auth.signUp({email,password:pass,options:{data:{nombre},emailRedirectTo:location.origin+location.pathname}});
+   const C0=S.cuenta,pendiente=C0.solProg?{tipo:'programa',solProg:C0.solProg}:(C0.entrenador&&C0.estado==='pendiente'&&C0.solicitud)?{tipo:'personal',solicitud:C0.solicitud}:null;
+   const {data,error}=await SB.auth.signUp({email,password:pass,options:{data:{nombre,pendiente},emailRedirectTo:location.origin+location.pathname}});
    ocupado(false);
    if(error) return err(/registered|already/i.test(error.message)?`Ya existe una cuenta con ${email}. Inicia sesión con ella.`:'No se ha podido crear la cuenta: '+error.message);
    if(data.user&&Array.isArray(data.user.identities)&&!data.user.identities.length) return err(`Ya existe una cuenta con ${email}. Inicia sesión con ella.`);
