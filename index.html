@@ -1586,7 +1586,7 @@ function activarPrograma(id,sub){
  S.cuenta.solProg={id,sub:sub||null,fecha:new Date().toISOString(),origen,resp:origen?JSON.parse(JSON.stringify(S.resp[origen]||{})):null};guardarCuenta();ir('cuenta');nubeSync(true);}
 function enviarPrograma(msg){
  const C=S.cuenta,sp=C.solProg;if(!sp) return;const pr=todosProgramas().find(x=>x.id===sp.id);
- if(sp.sb) nubeActualizar(sp.sb,{estado:'activa',fecha_inicio:hoyISO()});
+ if(sp.sb) nubeActualizar(sp.sb,{estado:'activa',fecha_inicio:hoyISO()}).then(()=>avisarCliente(sp.sb));
  if(pr) registrarCompra(pr.padre?`${CONTENIDO.programas.find(x=>x.id===pr.padre).nombre} · ${pr.nombre}`:pr.nombre,'Programas',pr.precio);
  C.prog={id:sp.id,sub:sp.sub,origen:sp.origen||null,resp:sp.resp||null,sb:sp.sb||null};C.inicio=hoyISO();C.hechas={};C.mov={};C.diasSel=null;C.progEnviado=new Date().toISOString();C.solProg=null;
  if(msg) C.mensajes.push({de:'entrenadora',txt:msg,fecha:new Date().toISOString()});guardarCuenta();}
@@ -2754,7 +2754,7 @@ function renderPanel(){
  const nSol=clientes().reduce((a,c)=>a+(c.solProg?1:0)+(c.entrenador&&c.estado==='pendiente'?1:0),0);
  const TABS=[['inicio','Inicio',T.length],['solicitudes','Solicitudes',nSol],['clientes','Clientes',0],...(FN.chat?[['mensajes','Mensajes',noL]]:[]),...(FN.agenda?[['agenda','Agenda',0]]:[]),['ejercicios','Ejercicios',0],['planes','Planes',0],['contenido','Contenido',0],['negocio','Negocio',0]].filter(([k])=>k!=='negocio'||FN.negocio);
  const body=tab==='inicio'?pInicioHTML(T):tab==='solicitudes'?pSolicitudesHTML():tab==='clientes'?pClientesHTML():tab==='mensajes'?panelChatHTML():tab==='agenda'?pAgendaHTML()+panelVideoHTML()+(FN.directos?panelDirectosHTML():''):tab==='ejercicios'?pEjerciciosHTML():tab==='planes'?pPlanesHTML():tab==='contenido'?pContenidoHTML():pNegocioHTML()+((S.negSec||'resumen')==='resumen'?panelValoracionesHTML():'');
- $app.innerHTML=topbar('')+`<main class="page panel">
+ $app.innerHTML=topbar('')+`<main class="page panel">${S.avisoEmail?`<div class="banner info" role="status">${esc(S.avisoEmail)}</div>`:''}
   <div class="acc-head"><div><p class="eyebrow">Administración</p><h1>Hola, <span class="nombre-propio">${esc(CONTENIDO.entrenadora.nombre||'entrenadora')}</span></h1></div><button class="btn ghost sm" data-go="salir">Cerrar sesión</button></div>
   <nav class="ptabs" role="tablist" aria-label="Secciones del panel">${TABS.map(([k,t,n])=>`<button role="tab" aria-selected="${k===tab}" data-ptab="${k}">${t}${n?` <span class="pc-badge">${n}</span>`:''}</button>`).join('')}</nav>
   ${body}</main>`;
@@ -2776,7 +2776,7 @@ function renderPanel(){
  const bp=document.getElementById('b-plan');if(bp) bp.onclick=()=>{const v=document.getElementById('f-plan').value.trim();if(!v){const e=document.getElementById('plan-err');e.hidden=false;return;}C.plan=v;C.planBorrador=null;C.planEnviado=new Date().toISOString();S.verPlan=false;
   const msg=(document.getElementById('plan-msg')||{}).value;if(msg&&msg.trim()) C.mensajes.push({de:'entrenadora',txt:msg.trim(),fecha:new Date().toISOString()});
   if(C.estado!=='activo'){const m=CONTENIDO.personal.modalidades.find(x=>x.id===(C.solicitud&&C.solicitud.modalidad));registrarCompra(`Entrenamiento personal · ${m?m.nombre:''}`,'Entrenamiento personal',m&&m.precio);}
-  if(C.sbPersonal) nubeActualizar(C.sbPersonal,{estado:'activa',plan_personal:v,...(C.estado!=='activo'?{fecha_inicio:hoyISO()}:{})});
+  if(C.sbPersonal) nubeActualizar(C.sbPersonal,{estado:'activa',plan_personal:v,...(C.estado!=='activo'?{fecha_inicio:hoyISO()}:{})}).then(()=>avisarCliente(C.sbPersonal));
   C.estado='activo';guardarCuenta();re();};
  const eg=document.getElementById('ent-guardar');if(eg) eg.onclick=()=>{const v=k=>(document.getElementById('ent-'+k)||{}).value||'';C.entrevista={...(C.entrevista||{}),hecha:true,fecha:(C.entrevista&&C.entrevista.fecha)||new Date().toISOString(),antecedentes:v('antecedentes').trim(),lesiones:v('lesiones').trim(),medicacion:v('medicacion').trim(),otros:v('otros').trim(),conclusion:v('conclusion'),obs:v('obs').trim()};guardarCuenta();S.entOk=true;re();setTimeout(()=>{S.entOk=false;},50);};
  const na=document.getElementById('n-add');if(na) na.onclick=()=>{const t=document.getElementById('n-txt').value.trim();if(!t) return;C.notas.push({fecha:new Date().toISOString(),txt:t});guardarCuenta();re();};
@@ -3820,6 +3820,12 @@ async function nubeSync(forzar){
  NUBE_EN=false;
  if(cambio&&['panel','cuenta'].includes(S.pantalla)){const y=window.scrollY;render();window.scrollTo(0,y);}
 }
+async function avisarCliente(id){if(!SB||!id) return;
+ try{const {data,error}=await SB.functions.invoke('avisar-cliente',{body:{id_contratacion:id}});
+  S.avisoEmail=(!error&&data&&data.ok)?`Le hemos avisado por email (${data.a}).`:'Enviado. El aviso por email todavía no está activado'+((data&&data.motivo)?`: ${data.motivo}`:'.');}
+ catch(e){S.avisoEmail='Enviado, pero no se ha podido mandar el aviso por email.';}
+ if(S.pantalla==='panel'){const y=window.scrollY;render();window.scrollTo(0,y);}
+ setTimeout(()=>{S.avisoEmail='';if(S.pantalla==='panel'){const y=window.scrollY;render();window.scrollTo(0,y);}},8000);}
 async function nubeRevisado(id){try{await SB.from('registro_semanal').update({revisado:true}).eq('id_contratacion',id).eq('revisado',false);}catch(e){}}
 async function nubeActualizar(id,cambios){if(!SB||!id) return;try{const {error}=await SB.from('contratacion').update(cambios).eq('id_contratacion',id);if(error) console.warn('Supabase:',error.message);}catch(e){}}
 function ponerSesion(v){S.sesion=v;try{v?localStorage.setItem('cv-sesion',v):localStorage.removeItem('cv-sesion');}catch(e){}}
