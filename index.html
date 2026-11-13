@@ -2020,7 +2020,9 @@ const nuevoIdC=()=>'c'+Date.now().toString(36)+Math.random().toString(36).slice(
 function nuevaCuenta(id){id=id||nuevoIdC();const o={...CUENTA0(),id};SK().forEach(k=>delete o[k]);DB.cuentas[id]=o;delete OBJ[id];return cuentaObj(id);}
 function cuentaAnon(){return cuentaObj('anon')||nuevaCuenta('anon');}
 function cargarCuenta(){DB=dbLeer();OBJ=OBJ||{};let s0=null;try{s0=localStorage.getItem('cv-sesion');}catch(e){}return (s0==='cliente'&&cuentaObj(DB.actual))||cuentaAnon();}
-function guardarCuenta(){const C=S.cuenta;C.hechasFecha=C.hechasFecha||{};Object.keys(C.hechas).forEach(k=>{if(C.hechas[k]&&!C.hechasFecha[k]) C.hechasFecha[k]=hoyISO();if(!C.hechas[k]) delete C.hechasFecha[k];});
+function guardarCuenta(sinSync){if(SB&&S.sesion&&!sinSync&&!NUBE_EN&&EXT){clearTimeout(EXT.t);EXT.t=setTimeout(()=>nubeSync(true),2500);}
+ guardarCuentaYa();}
+function guardarCuentaYa(){const C=S.cuenta;C.hechasFecha=C.hechasFecha||{};Object.keys(C.hechas).forEach(k=>{if(C.hechas[k]&&!C.hechasFecha[k]) C.hechasFecha[k]=hoyISO();if(!C.hechas[k]) delete C.hechasFecha[k];});
  if(!C.id) C.id='anon';DB.cuentas[C.id]=JSON.parse(JSON.stringify(C));if(!OBJ[C.id]) OBJ[C.id]=C;dbGuardar();}
 function usarCuenta(c){S.cuenta=c;DB.actual=c.id;dbGuardar();}
 const todosClientes=()=>Object.keys(DB.cuentas).map(cuentaObj).filter(c=>c&&(c.auth||c.solicitud||c.contacto||(c.mensajes||[]).length));
@@ -5001,7 +5003,7 @@ if(SB){try{migrarPlanes();}catch(e){console.warn(e);}contenidoBajar();if(S.sesio
 // Traduce el programa de la app a las tablas: subplan 'runners-5k' o programa 'fuerza'
 function idsPrograma(id,sub){const pr=todosProgramas().find(x=>x.id===id);return (sub&&pr&&pr.subplanes)?{id_subplan:`${id}-${sub}`}:{id_programa:id};}
 function progDeFila(f,subs){if(f.id_subplan){const s=subs[f.id_subplan];return {id:s?s.id_programa:f.id_subplan.split('-')[0],sub:f.id_subplan.slice(((s&&s.id_programa)||f.id_subplan.split('-')[0]).length+1)};}return {id:f.id_programa,sub:null};}
-let NUBE_T=0,NUBE_EN=false;
+var NUBE_T=0,NUBE_EN=false;
 const TEC_RUTA={};
 // Notas privadas sobre un cliente (las ven la entrenadora principal y quien lo lleva)
 function notaSubir(C,n){if(!SB||!ES_UUID(C.id)||n.sb) return;const cid=C.id;
@@ -5050,6 +5052,91 @@ function clienteAjustesBajar(c,KS,QS,MV,VT){const admin=esStaff();let cambio=fal
    if(!t){t={id:v.id_video_tecnica,sb:v.id_video_tecnica,fecha:v.fecha,ej:v.ejercicio_nombre||'',com:v.comentario||'',archivo:{nombre:''},estado:'pendiente',corr:'',demo:''};c.tecnica.push(t);}
    TEC_RUTA[t.id]=v.archivo_url;Object.assign(t,{estado:v.estado||'pendiente',corr:v.correccion||'',demo:v.id_ejercicio||t.demo||'',corrPor:v.id_corregido_por||t.corrPor||null});});}
  if(hashJ([c.diasSel,c.pausa,c.mov,c.inicio,c.cuestIni,c.tecnica])!==ant) cambio=true;return cambio;}
+/* ---------- Agenda, directos, ciclo, reto y dúo en Supabase ---------- */
+var EXT={h:{},res:null,mis:null,pub:false,t:null};
+const extFilaDir=d=>({id_directo:String(d.id),tipo:d.tipo==='gratis'?'gratis':'pago',titulo:d.titulo||null,fecha:d.fecha,hora:d.hora||null,dur:+d.dur||null,enlace:d.enlace||null,estado:d.estado||'programada',grabacion:d.grab||null,auto:d.auto||null,semana:d.semana!=null?String(d.semana):null,borrado:false});
+const extFilaHueco=x=>({id_hueco:String(x.id),fecha:x.fecha,hora:x.hora,dur:+x.dur||null,tipo:x.tipo||null,id_cliente:ES_UUID(x.reserva)?x.reserva:null});
+function extAplicarDirectos(rows){const C=S.cuenta,prev={};(C.directos||[]).forEach(d=>prev[String(d.id)]=d);
+ const nuevo=rows.filter(r=>!r.borrado).map(r=>{const pv=prev[r.id_directo];return {...(pv||{chat:[]}),id:pv?pv.id:r.id_directo,tipo:r.tipo,titulo:r.titulo||'',fecha:r.fecha,hora:r.hora||'',dur:r.dur||0,enlace:r.enlace||'',estado:r.estado||'programada',grab:r.grabacion||'',...(r.auto?{auto:r.auto}:{}),...(r.semana!=null?{semana:isNaN(+r.semana)?r.semana:+r.semana}:{})};})
+  .sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora));
+ const bor=[...new Set([...(C.dirBorrados||[]).map(String),...rows.filter(r=>r.borrado).map(r=>r.id_directo)])],ids=new Set(rows.map(r=>r.id_directo));
+ // las clases automáticas salen del horario: si aún no están en Supabase, se mantienen (las sube la entrenadora al abrir su panel)
+ const keep=esStaff()&&soyPrincipal()?[]:(C.directos||[]).filter(d=>d.auto&&!ids.has(String(d.id))&&!bor.includes(String(d.id)));
+ const todo=[...nuevo,...keep].sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora));
+ const antes=JSON.stringify([C.directos,C.dirBorrados]);C.directos=todo;C.dirBorrados=bor;return antes!==JSON.stringify([C.directos,C.dirBorrados]);}
+// Visitantes sin cuenta: ver los directos programados
+async function extDirectosPublicos(){if(!SB) return;try{const {data,error}=await SB.from('directo').select('*');if(error) throw error;if(esStaff()) return;if(extAplicarDirectos(data||[])){guardarCuenta(true);if(['inicio','directo'].includes(S.pantalla)){const y=window.scrollY;render();window.scrollTo(0,y);}}}catch(e){console.warn('Supabase directos:',e&&e.message||e);}}
+async function extSync(uid){if(!SB) return false;const ok=r=>{if(r&&r.error) throw r.error;return r;};let cambio=false;const C=S.cuenta;
+ if(esStaff()){
+  if(soyPrincipal()){
+   // 1) Subir lo que ha cambiado en este navegador (solo la entrenadora principal: directos, agenda y enlace)
+   if(EXT.h.cargado){
+    const D=(C.directos||[]).map(extFilaDir),ids=new Set(D.map(f=>f.id_directo));
+    (C.dirBorrados||[]).map(String).filter(i=>!ids.has(i)).forEach(i=>D.push({id_directo:i,tipo:'pago',fecha:hoyISO(),estado:'borrada',borrado:true}));
+    for(const f of D){const k='d'+f.id_directo,h=hashJ(f);if(EXT.h[k]===h) continue;ok(await SB.from('directo').upsert(f));EXT.h[k]=h;}
+    const vD=new Set(D.map(f=>'d'+f.id_directo));for(const k of Object.keys(EXT.h).filter(k=>k[0]==='d'&&!vD.has(k))){ok(await SB.from('directo').delete().eq('id_directo',k.slice(1)));delete EXT.h[k];}
+    const H=(C.huecos||[]).map(extFilaHueco);
+    for(const f of H){const k='h'+f.id_hueco,h=hashJ(f);if(EXT.h[k]===h) continue;ok(await SB.from('hueco_agenda').upsert(f));EXT.h[k]=h;}
+    const vH=new Set(H.map(f=>'h'+f.id_hueco));for(const k of Object.keys(EXT.h).filter(k=>k[0]==='h'&&!vH.has(k))){ok(await SB.from('hueco_agenda').delete().eq('id_hueco',k.slice(1)));delete EXT.h[k];}
+    const en=C.enlaceVideo||null;if(EXT.h.enlace!==en){ok(await SB.from('agenda_ajuste').upsert({id:1,enlace_video:en}));EXT.h.enlace=en;}
+   }
+  }
+  // 2) Bajar todo
+  const [DR,HU,AJ,RD,CI,RE,DU]=await Promise.all([SB.from('directo').select('*'),SB.from('hueco_agenda').select('*'),SB.from('agenda_ajuste').select('*'),SB.from('reserva_directo').select('*'),SB.from('ciclo_menstrual').select('*'),SB.from('reto_participacion').select('*'),SB.from('duo_invitacion').select('*')]);
+  [DR,HU,AJ,RD,CI,RE,DU].forEach(ok);
+  if(extAplicarDirectos(DR.data||[])) cambio=true;
+  (DR.data||[]).forEach(r=>{const d=(C.directos||[]).find(x=>String(x.id)===r.id_directo);EXT.h['d'+r.id_directo]=hashJ(r.borrado?{id_directo:r.id_directo,tipo:'pago',fecha:hoyISO(),estado:'borrada',borrado:true}:extFilaDir(d||{id:r.id_directo}));});
+  const prevH={};(C.huecos||[]).forEach(x=>prevH[String(x.id)]=x);
+  const hu=(HU.data||[]).map(r=>({...(prevH[r.id_hueco]||{}),id:prevH[r.id_hueco]?prevH[r.id_hueco].id:r.id_hueco,fecha:r.fecha,hora:r.hora,dur:r.dur||0,tipo:r.tipo||'',reserva:r.id_cliente||null})).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora));
+  if(JSON.stringify(hu)!==JSON.stringify(C.huecos||[])){C.huecos=hu;cambio=true;}hu.forEach(x=>EXT.h['h'+String(x.id)]=hashJ(extFilaHueco(x)));
+  const en=((AJ.data||[])[0]||{}).enlace_video||'';if(soyPrincipal()&&!EXT.h.cargado&&!en&&C.enlaceVideo){/* primera vez: se sube lo de este navegador */}else if(en!==(C.enlaceVideo||'')){C.enlaceVideo=en;cambio=true;}EXT.h.enlace=C.enlaceVideo||null;
+  if(!EXT.h.cargado&&soyPrincipal()&&!(DR.data||[]).length&&!(HU.data||[]).length&&((C.directos||[]).length||(C.huecos||[]).length)){EXT.h={cargado:true};return extSync(uid);}   // primera vez: sube lo que hay en este navegador
+  EXT.h.cargado=true;
+  clientes().forEach(cl=>{const id=cl.id;if(!ES_UUID(id)) return;const cc=cuentaObj(id);if(!cc) return;
+   const ci=(CI.data||[]).find(x=>x.id_usuario===id),re=(RE.data||[]).find(x=>x.id_usuario===id),du=(DU.data||[]).find(x=>x.id_usuario===id),rs=(RD.data||[]).filter(x=>x.id_usuario===id).map(x=>x.id_directo);
+   const nuevo={ciclo:ci?{duracion:ci.duracion||28,regla:ci.regla||5,hormonal:!!ci.hormonal,compartir:!!ci.compartir,desde:ci.desde,dias:ci.dias||{}}:null,reto:re?{unido:!!re.unido,dias:re.dias||[]}:{unido:false,dias:[]},duo:du?{nombre:du.nombre,email:du.email,estado:du.estado,fecha:du.fecha}:null,reservas:rs};
+   const ant=JSON.stringify([cc.ciclo||null,cc.reto||{unido:false,dias:[]},cc.duo||null,(cc.reservas||[]).map(String)]);
+   if(ant!==JSON.stringify([nuevo.ciclo,nuevo.reto,nuevo.duo,nuevo.reservas])){Object.assign(cc,nuevo);conCuenta(cc,guardarCuenta);cambio=true;}});
+  return cambio;}
+ // ---- Cliente ----
+ if(S.sesion!=='cliente'||C.id!==uid) return false;
+ const filaC=()=>C.ciclo?{id_usuario:uid,duracion:+C.ciclo.duracion||28,regla:+C.ciclo.regla||5,hormonal:!!C.ciclo.hormonal,compartir:!!C.ciclo.compartir,desde:C.ciclo.desde||null,dias:C.ciclo.dias||{}}:null;
+ const filaR=()=>({id_usuario:uid,unido:!!(C.reto&&C.reto.unido),dias:[...new Set((C.reto&&C.reto.dias)||[])]});
+ const filaD=()=>C.duo?{id_usuario:uid,nombre:C.duo.nombre,email:C.duo.email,estado:C.duo.estado||'pendiente',fecha:C.duo.fecha||hoyISO()}:null;
+ if(EXT.h.cargado){
+  // 1) Subir lo suyo
+  const fc=filaC(),hc=hashJ(fc);if(EXT.h.ciclo!==hc){if(fc) ok(await SB.from('ciclo_menstrual').upsert(fc));else ok(await SB.from('ciclo_menstrual').delete().eq('id_usuario',uid));EXT.h.ciclo=hc;}
+  const fr=filaR(),hr=hashJ(fr);if(EXT.h.reto!==hr){ok(await SB.from('reto_participacion').upsert(fr));EXT.h.reto=hr;}
+  const fd=filaD(),hd=hashJ(fd);if(EXT.h.duo!==hd){if(fd) ok(await SB.from('duo_invitacion').upsert(fd));else ok(await SB.from('duo_invitacion').delete().eq('id_usuario',uid));EXT.h.duo=hd;}
+  const loc=new Set((C.reservas||[]).map(String)),srv=EXT.res||new Set();
+  for(const i of loc) if(!srv.has(i)){const r=await SB.from('reserva_directo').insert({id_directo:i,id_usuario:uid});if(r.error&&!/duplicate/i.test(r.error.message)) console.warn('reserva directo:',r.error.message);}
+  for(const i of srv) if(!loc.has(i)) ok(await SB.from('reserva_directo').delete().eq('id_directo',i).eq('id_usuario',uid));
+  const misL=new Set((C.huecos||[]).filter(x=>x.reserva===uid).map(x=>String(x.id))),misS=EXT.mis||new Set();
+  for(const i of misL) if(!misS.has(i)){const {data}=await SB.rpc('reservar_hueco',{h:i});if(!data){S.avisoAgenda='Ese hueco ya no está libre. Elige otro.';}}
+  for(const i of misS) if(!misL.has(i)) await SB.rpc('cancelar_hueco',{h:i});
+ }
+ // 2) Bajar
+ const [DR,HU,AJ,RD,CI,RE,DU]=await Promise.all([SB.from('directo').select('*'),SB.from('hueco_agenda').select('*'),SB.from('agenda_ajuste').select('*'),SB.from('reserva_directo').select('id_directo').eq('id_usuario',uid),SB.from('ciclo_menstrual').select('*').eq('id_usuario',uid),SB.from('reto_participacion').select('*').eq('id_usuario',uid),SB.from('duo_invitacion').select('*').eq('id_usuario',uid)]);
+ [DR,HU,AJ,RD,CI,RE,DU].forEach(ok);
+ if(!EXT.h.cargado){   // primera vez en esta visita: si en Supabase no hay nada suyo, se sube lo de este navegador
+  EXT.h.cargado=true;EXT.res=new Set((RD.data||[]).map(x=>x.id_directo));EXT.mis=new Set((HU.data||[]).filter(x=>x.id_cliente===uid).map(x=>x.id_hueco));
+  if(!(CI.data||[]).length&&C.ciclo) EXT.h.ciclo='';else EXT.h.ciclo=hashJ(filaC());
+  if(!(RE.data||[]).length&&C.reto&&(C.reto.unido||(C.reto.dias||[]).length)) EXT.h.reto='';else EXT.h.reto=hashJ(filaR());
+  if(!(DU.data||[]).length&&C.duo) EXT.h.duo='';else EXT.h.duo=hashJ(filaD());
+  if(EXT.h.ciclo===''||EXT.h.reto===''||EXT.h.duo===''||(C.reservas||[]).some(i=>!EXT.res.has(String(i)))){await extSync(uid);return true;}
+ }
+ if(extAplicarDirectos(DR.data||[])) cambio=true;
+ const hu=(HU.data||[]).map(r=>({id:r.id_hueco,fecha:r.fecha,hora:r.hora,dur:r.dur||0,tipo:r.tipo||'',reserva:r.id_cliente||null})).sort((a,b)=>(a.fecha+a.hora).localeCompare(b.fecha+b.hora));
+ if(JSON.stringify(hu)!==JSON.stringify((C.huecos||[]).map(x=>({id:String(x.id),fecha:x.fecha,hora:x.hora,dur:x.dur||0,tipo:x.tipo||'',reserva:x.reserva||null})))){C.huecos=hu;cambio=true;}
+ const en=((AJ.data||[])[0]||{}).enlace_video||'';if(en!==(C.enlaceVideo||'')){C.enlaceVideo=en;cambio=true;}
+ EXT.res=new Set((RD.data||[]).map(x=>x.id_directo));EXT.mis=new Set(hu.filter(x=>x.reserva===uid).map(x=>x.id));
+ const rs=[...EXT.res];if(JSON.stringify(rs.slice().sort())!==JSON.stringify((C.reservas||[]).map(String).sort())){C.reservas=rs;cambio=true;}
+ const ci=(CI.data||[])[0],re=(RE.data||[])[0],du=(DU.data||[])[0];
+ const nC=ci?{...(C.ciclo||{}),duracion:ci.duracion||28,regla:ci.regla||5,hormonal:!!ci.hormonal,compartir:!!ci.compartir,desde:ci.desde,dias:ci.dias||{}}:null,nR=re?{unido:!!re.unido,dias:re.dias||[]}:{unido:false,dias:[]},nD=du?{nombre:du.nombre,email:du.email,estado:du.estado,fecha:du.fecha}:null;
+ if(JSON.stringify([C.ciclo||null,C.reto,C.duo||null])!==JSON.stringify([nC,nR,nD])){C.ciclo=nC;C.reto=nR;C.duo=nD;cambio=true;}
+ EXT.h.ciclo=hashJ(filaC());EXT.h.reto=hashJ(filaR());EXT.h.duo=hashJ(filaD());
+ if(cambio) guardarCuenta(true);
+ return cambio;}
 async function nubeSync(forzar){
  if(!SB||NUBE_EN||!S.sesion) return;if(!forzar&&Date.now()-NUBE_T<15000) return;
  NUBE_EN=true;NUBE_T=Date.now();let cambio=false;
@@ -5129,6 +5216,7 @@ async function nubeSync(forzar){
      if(JSON.stringify(nuevo)!==JSON.stringify(c.registros||[])||(esStaff()&&c.regRevisado!==rev)){c.registros=nuevo;if(esStaff()) c.regRevisado=rev;cambio=true;}}}
    if(cambio) conCuenta(c,guardarCuenta);
   });
+  try{if(await extSync(ses.session.user.id)) cambio=true;}catch(e){console.warn('Supabase agenda/directos:',e&&e.message||e);}
  }catch(e){console.warn('Supabase:',e&&e.message||e);}
  NUBE_EN=false;
  if(cambio&&['panel','cuenta'].includes(S.pantalla)){const ae=document.activeElement,foco=ae&&ae.dataset&&ae.dataset.cmptxt?ae.closest('[data-cmp]').dataset.cmp:null;const y=window.scrollY;render();window.scrollTo(0,y);
@@ -5224,7 +5312,7 @@ function render(){
  if(S.pantalla==='pago'&&S.sesion!=='cliente'){S.despues='pago';S.pantalla='login';S.loginTab='entrar';}
  if((S.pantalla==='programa'&&progOculto(S.prog))||(['resEmbarazo','resPostparto'].includes(S.pantalla)&&progOculto(S.pantalla==='resEmbarazo'?'embarazo':'postparto'))||(S.pantalla==='paso'&&['embarazo','postparto'].includes(S.q)&&progOculto(S.q))) S.pantalla='inicio';
  if((!FN.rutinasPortada&&S.pantalla==='entreno')||(!FN.directos&&['directo','sala'].includes(S.pantalla))||(!FN.pagos&&S.pantalla==='pago')||(S.pantalla==='carpeta'&&ocultoId(S.carp))) S.pantalla='inicio';
- S.lastP=S.pantalla;setTimeout(animaSecciones,0);
+ S.lastP=S.pantalla;setTimeout(animaSecciones,0);if(SB&&!EXT.pub){EXT.pub=true;setTimeout(extDirectosPublicos,0);}
  ({login:renderLogin,inicio:renderInicio,entreno:renderEntreno,programa:renderPrograma,carpeta:renderCarpeta,paso:renderPaso,resultado:renderResultado,resRunners:renderResRunners,resEmbarazo:renderResEmbarazo,resPostparto:renderResPostparto,resOpos:renderResOpos,resQ:renderResQ,cuenta:renderCuenta,personal:renderPersonal,resPersonal:renderResPersonal,panel:renderPanel,directo:renderDirecto,precios:renderPrecios,player:renderPlayer,sala:renderSala,sobre:renderSobre,pago:renderPago})[S.pantalla]();if(S.pantalla!=='player') clearInterval(TICK);renderChat();}
 
 /* ---------- Movimiento suave: las secciones aparecen al bajar ---------- */
