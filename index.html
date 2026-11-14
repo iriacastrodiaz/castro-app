@@ -1958,7 +1958,7 @@ function modVis(m){return (FN&&FN.agenda)||m.id!=='videollamada';}
 const ocultoId=id=>(CONTENIDO.ocultos||[]).includes(id);
 function progOculto(p){if(!p) return false;if(typeof p==='string') p=todosProgramas().find(x=>x.id===p)||{id:p};return ocultoId(p.id)||(!!p.padre&&ocultoId(p.padre));}
 function aplicarPrecios(){document.body.classList.toggle('sin-precios',!VP());}
-const NAV=[['programas','Programas'],['entrenador','Entrenador personal'],['sobre','Sobre mí'],['precios','Precios']];   // rutinas, entrena conmigo y en directo están dentro de «Programas»
+const NAV=[['inicio','Inicio'],...(FN.rutinasPortada?[['entrenos','Rutinas']]:[]),['programas','Programas'],['pilates','Entrena conmigo'],['directo','En directo'],['precios','Precios'],['entrenador','Entrenador personal'],['sobre','Sobre mí']];
 function nav(){
  const act=S.pantalla==='sobre'?'sobre':S.pantalla==='precios'?'precios':S.pantalla==='directo'?'directo':((S.pantalla==='carpeta'&&S.carp==='pilates')||(S.pantalla==='programa'&&String(S.prog).startsWith('pilates')))?'pilates':S.pantalla==='personal'?'entrenador':S.pantalla==='cuenta'?'cuenta':S.pantalla==='inicio'?'inicio':(S.pantalla==='programa'||S.pantalla==='carpeta')?'programas':S.pantalla==='entreno'?'entrenos':'';
  return `<nav class="nav ${S.menuMovil?'abierto':''}" id="nav-principal" aria-label="Principal">${NAV.filter(([k])=>(k!=='precios'||VP())&&(k!=='directo'||FN.directos)&&(k!=='pilates'||!ocultoId('pilates'))).map(([k,t])=>`<button data-nav="${k}" ${k===act?'aria-current="page"':''}>${t}</button>`).join('')}</nav>`;
@@ -1993,6 +1993,7 @@ function bindGo(){
   if(k==='inicio'||k==='cuenta'){ir(k);return;}
   if(k==='entrenador'){ir('personal');return;}
   if(k==='pilates'){ir('carpeta',{carp:'pilates'});return;}
+  if(k==='entrenos'){ir('entreno');return;}
   if(k==='directo'){ir('directo');return;}
   if(k==='precios'){ir('precios');return;}
   if(k==='sobre'){ir('sobre');return;}
