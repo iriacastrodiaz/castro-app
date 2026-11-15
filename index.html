@@ -853,6 +853,9 @@ body.panel-oscuro .topbar,body.panel-oscuro .p-side,body.panel-oscuro .page{back
 .pl-addbg{font:inherit;font-size:.85rem;width:auto!important;padding:6px 10px!important;min-height:0!important;border-radius:99px}.bg-l{list-style:none;padding:0;margin:6px 0;display:grid;gap:6px}.bg-l li{display:flex;gap:10px;align-items:baseline;border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:#fff}.bg-l span{color:var(--muted);font-size:.85rem;flex:1}
 .su-l{list-style:none;padding:0;margin:8px 0;display:grid;gap:6px}.su-l li{display:flex;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:#fff}.su-l s{color:var(--muted)}
 .cc-t .cc-ses th{background:var(--accent-soft);text-align:left;font-size:.85rem}.val-ed details{border-top:1px solid var(--line);padding:8px 0}.val-ed summary{cursor:pointer;font-weight:600;color:var(--accent-ink)}.val-g{margin-top:8px}.val-ancho{grid-column:1/-1}
+.page.panel .sec-sub:not(.keep):not(.t-hechas),.page.panel .p-sd-d,.page.panel .p-btn-d,.page.panel .p-mdesc,.page.panel .pc-d,.page.panel .acc-card>.ph+.sec-sub{display:none}
+.page.panel .clasif .lbl{font-size:.8rem}.pl-enbib{font-size:.8rem;color:#2f6b45}
+.pl-en-ficha .plf-tabs{display:flex!important}.pl-en-ficha #plf-volver,.pl-en-ficha .pl-cambiar,.pl-en-ficha .plf-est{display:none!important}.pl-en-ficha .plf-tit .eyebrow{display:none}
 .svc-proy{max-width:760px}.svc-proy-tit{font-family:var(--serif,'Fraunces',serif);font-weight:500;font-size:clamp(1.6rem,3vw,2.2rem);margin:4px 0 14px}
 .svc-proy .svc-met{margin-top:26px}.svc-num{display:block;font-family:var(--serif,'Fraunces',serif);color:var(--accent-ink);font-size:1.3rem;margin-bottom:4px}
 .svc-eq{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px}.svc-eq-intro{margin:0 0 18px}
@@ -3898,7 +3901,8 @@ function fichaHTML(){
   ${true?`<section class="acc-card"><p class="eyebrow">Notas privadas</p><h2>Tus notas</h2><p class="sec-sub">Solo las ves tú. Ej.: lesiones, preferencias, cosas a vigilar.</p>
    <div class="chat-form"><textarea id="n-txt" rows="2" placeholder="Ej.: prefiere entrenar por la mañana; vigilar rodilla izquierda"></textarea><button class="btn" id="n-add">Añadir</button></div>
    ${C.notas.length?`<div class="regs">${C.notas.slice().reverse().map((n,i)=>`<div class="reg nota"><b>${fechaCorta(n.fecha)}${n.autor&&n.autor!=='principal'?` · ${esc(nombreAutor(n.autor))}`:''}</b><span>${esc(n.txt)}</span><button class="link" data-nborrar="${C.notas.length-1-i}">Borrar</button></div>`).join('')}</div>`:''}</section>`:''}`;
- const ENT=`  ${planFechasHTML()}
+ const ENT=`  ${planClienteHTML()}
+  ${planFechasHTML()}
   ${sustitHTML()}
   ${asignadoLocalHTML()}
   ${C.entrenador||misEntrevistas().length||C.entrevista?entrevistaFichaHTML():''}
@@ -4082,7 +4086,7 @@ function renderPanel(){
  $app.querySelectorAll('[data-nborrar]').forEach(b=>b.onclick=()=>{const x=C.notas.splice(+b.dataset.nborrar,1)[0];if(SB&&x&&x.sb) SB.from('nota_cliente').delete().eq('id_nota_cliente',x.sb).then(({error})=>{if(error) console.warn('Supabase nota:',error.message);});guardarCuenta();re();});
  if(tab==='negocio') Object.values(C.valor).forEach(v=>{if(v.estrellas<=2) v.visto=true;});
  if(tab==='agenda'){bindPanelDirectos();bindVideo(re);}
- bindRevisiones(re);bindRevFicha(re);bindDolorFicha(re);bindFichaHerr(re);
+ bindRevisiones(re);bindRevFicha(re);bindDolorFicha(re);bindFichaHerr(re);if($app.querySelector('.pl-en-ficha')) bindPlanes(re);
  if(tab==='mensajes'){bindPanelChat();bindConsultasPanel(()=>{const y=window.scrollY;renderPanel();window.scrollTo(0,y);});}
  if(tab==='contenido') bindContenido();
  if(tab==='ejercicios') bindEjercicios(re);
@@ -4472,7 +4476,7 @@ function uuidDe(s){const b=new TextEncoder().encode(String(s)),h=[];
 const esPersonalK=k=>String(k||'').startsWith('P:');
 function duenoPlan(k){if(k==='BIB') return {id_programa:'biblioteca',id_subplan:null,id_contratacion:null,en_biblioteca:true};if(esPersonalK(k)) return {id_contratacion:k.slice(2)};const [id,sub]=String(k).split('/');return idsPrograma(id,sub||null);}
 function planDeFila(f,subs){if(f.en_biblioteca) return 'BIB';if(f.id_contratacion) return 'P:'+f.id_contratacion;const p=progDeFila(f,subs||{});return p.sub?p.id+'/'+p.sub:p.id;}
-function clientePlanP(k){return clientes().find(c=>c.sbPersonal&&('P:'+c.sbPersonal)===k)||null;}
+function clientePlanP(k){return clientes().find(c=>'P:'+(c.sbPersonal||c.id)===k)||null;}
 function estrPersonal(c){const e=(c&&c.estrP)||{},semanas=+e.semanas||4,porSemana=+e.porSemana||3;return {semanas,porSemana,total:semanas*porSemana};}
 function estrPlan(k){
  if(esPersonalK(k)) return estrPersonal(esStaff()?clientePlanP(k):S.cuenta);
@@ -4491,7 +4495,7 @@ function plantillaDe(key){const x=planDeClave(key);if(!x) return null;const [w,n
 function nombrePlanK(k){if(k==='BIB') return 'Biblioteca de sesiones';if(esPersonalK(k)){const c=esStaff()?clientePlanP(k):null;return c?'Personal · '+conCuenta(c,()=>nombreLocal()):'Entrenamiento personal';}
  const d=destinosPlan(true).find(x=>x.k===k);return d?d.n:k;}
 function destinosTodos(){const L=[{k:'BIB',n:'Biblioteca de sesiones',bib:true,personal:false},...destinosPlan(true).filter(d=>puedePlan(d.k)).map(d=>({...d,personal:false}))];
- clientes().filter(c=>c.entrenador&&c.sbPersonal&&['activo','pausa','en pausa'].includes(c.estado)).forEach(c=>L.push({k:'P:'+c.sbPersonal,n:'Personal · '+conCuenta(c,()=>nombreLocal()),personal:true,c}));return L;}
+ clientes().filter(c=>c.entrenador&&(c.sbPersonal||!SB||window.VISTA_PREVIA)&&['activo','pausa','en pausa'].includes(c.estado)).forEach(c=>L.push({k:'P:'+(c.sbPersonal||c.id),n:'Personal · '+conCuenta(c,()=>nombreLocal()),personal:true,c}));return L;}
 function usosPl(id){let n=0;Object.values(CONTENIDO.planes||{}).forEach(W=>W.forEach(w=>(w||[]).forEach(x=>{if(x===id) n++;})));return n;}
 
 // Una vez: los ejercicios y plantillas antiguos pasan a tener identificadores de Supabase, y cada plantilla, a su plan
@@ -4954,6 +4958,18 @@ async function herrSync(uid){const C=S.cuenta,ok=r=>{if(r&&r.error) console.warn
   return c;}
  if(S.sesion!=='cliente'||C.id!==uid) return false;const r=ok(await SB.from('sustitucion_ejercicio').select('*').eq('id_cliente',uid));if(r.error) return false;
  const su=r.data.map(x=>({de:x.ejercicio_original,por:x.ejercicio_nuevo,nota:x.nota||null}));if(JSON.stringify(su)===JSON.stringify(C.sustit||[])) return false;C.sustit=su;guardarCuenta(true);return true;}
+
+/* ---------- Plan del cliente dentro de su ficha + copia en la biblioteca ---------- */
+function copiaEnBiblioteca(pl){if(!pl||!esPersonalK(pl.plan)) return;const L=CONTENIDO.plantillas=CONTENIDO.plantillas||[];
+ const c=clientePlanP(pl.plan),quien=c?conCuenta(c,()=>nombreLocal()):'';const bid=uuidDe('bib|'+pl.id);let b=L.find(x=>x.id===bid);   // id fijo: la copia se actualiza aunque venga de Supabase
+ const datos=JSON.parse(JSON.stringify({nombre:pl.nombre||'Sesión',tipo:pl.tipo,duracion:pl.duracion,nivel:pl.nivel,material:pl.material,objetivo:pl.objetivo,nota:pl.nota,bloques:pl.bloques,adaptaciones:pl.adaptaciones||[]}));
+ const et=[...new Set([...(pl.etiquetas||[]),...(quien?[quien]:[])])];
+ if(b){Object.assign(b,datos,{etiquetas:[...new Set([...(b.etiquetas||[]),...et])]});}
+ else L.push({...datos,id:bid,plan:'BIB',autor:pl.autor||autorActual(),creada:new Date().toISOString(),etiquetas:et});
+ guardarContenido();}
+function planClienteHTML(){const C=S.cuenta;if(!C.entrenador) return '';const k='P:'+(C.sbPersonal||C.id),D=destinosTodos();if(!D.some(d=>d.k===k)) return '';
+ if(S.plProg!==k){S.plProg=k;S.plTab='semanas';S.plEdit=null;S.np=null;}S.plDentro=true;
+ return `<div class="pl-en-ficha">${pPlanesCuerpo(D)}</div>`;}
 /* ---------- Tus programas: crear, ocultar y publicar (solo la entrenadora principal) ---------- */
 const slugProg=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,30)||'plan';
 async function progSubir(P){if(!SB||window.VISTA_PREVIA||!soyPrincipal()||P.padre) return;const n=x=>{const v=parseInt(x,10);return v>0?v:null;};
@@ -5063,7 +5079,7 @@ function pPlanesCuerpo(D){
    ${[...Array(E.porSemana)].map((_,si)=>{const v=PL.some(p=>p.id===ses[si])?ses[si]:'';return `<td><select id="pla_${wi}_${si}" data-asig="${wi}.${si}" aria-label="Semana ${w}, sesión ${si+1}">${opciones(v)}</select>${v?`<button class="link pl-cel-ed" data-pledit="${v}">editar</button>`:''}</td>`;}).join('')}
    <td class="pl-plan-acc">${pubd?`<button class="btn ghost sm" data-pub="${w}.0">Quitar publicación</button>`:`<button class="btn sm" data-pub="${w}.1" ${nAs?'':'title="Sin plantillas: se publicará con la sesión por defecto"'}>Publicar</button>`}<button class="link" data-plprev="${w}">${S.plPrev===w?'Cerrar':'Ver'}</button>${wi?`<button class="link" data-plcopia="${wi}" title="Copiar la semana ${wi}">Copiar anterior</button>`:''}</td></tr>
    ${S.plPrev===w?`<tr class="pl-plan-prev"><td colspan="${E.porSemana+2}">${prevSemanaHTML(k,w,E)}</td></tr>`:''}`;}).join('');
- const card=p=>{const u=usosPl(p.id);return `<article class="pl-card ${ed&&ed.id===p.id?'on':''}" style="border-left:4px solid ${TIPO_COLOR[p.tipo]||'var(--line)'}"><b>${esc(p.nombre||'Sin nombre')}</b><button class="link pl-imp" data-plimp="${p.id}">Imprimir</button><span>${nEjPl(p)} ejercicios · ${p.bloques.length} bloques</span>${(p.etiquetas||[]).length?`<span class="pl-etqs">${p.etiquetas.map(t=>`<i class="etq mini">${esc(t)}</i>`).join('')}</span>`:''}<span>${u?`En ${u} ${u===1?'sesión':'sesiones'}`:'Sin asignar a ninguna semana'}</span><div class="actions"><button class="btn ghost sm" data-pledit="${p.id}">Editar</button><button class="btn ghost sm" data-pldup="${p.id}">Duplicar</button><button class="link" data-plbib="${p.id}">Guardar en la biblioteca</button></div></article>`;};
+ const card=p=>{const u=usosPl(p.id);return `<article class="pl-card ${ed&&ed.id===p.id?'on':''}" style="border-left:4px solid ${TIPO_COLOR[p.tipo]||'var(--line)'}"><b>${esc(p.nombre||'Sin nombre')}</b><button class="link pl-imp" data-plimp="${p.id}">Imprimir</button><span>${nEjPl(p)} ejercicios · ${p.bloques.length} bloques</span>${(p.etiquetas||[]).length?`<span class="pl-etqs">${p.etiquetas.map(t=>`<i class="etq mini">${esc(t)}</i>`).join('')}</span>`:''}<span>${u?`En ${u} ${u===1?'sesión':'sesiones'}`:'Sin asignar a ninguna semana'}</span><div class="actions"><button class="btn ghost sm" data-pledit="${p.id}">Editar</button><button class="btn ghost sm" data-pldup="${p.id}">Duplicar</button>${esPersonalK(p.plan)?'<span class="pl-enbib">✓ También en tu biblioteca</span>':`<button class="link" data-plbib="${p.id}">Guardar en la biblioteca</button>`}</div></article>`;};
  const grupos={};otras.forEach(p=>(grupos[p.plan]=grupos[p.plan]||[]).push(p));
  return `<section class="sec">
   ${!dest.personal&&PLN.listo&&!planValido(k)?'<div class="banner"><strong>Este programa no está en Supabase.</strong>Lo que prepares aquí se guarda solo en este navegador. Avísame para darlo de alta en la base de datos.</div>':''}
@@ -5183,6 +5199,7 @@ function bindPlanes(re){
   c.estrP={semanas:sem,porSemana:por};conCuenta(c,guardarCuenta);nubeActualizar(c.sbPersonal,{semanas:sem,sesiones_semana:por});guarda();});
  if(g('pl-nueva')) g('pl-nueva').onclick=()=>{const p={id:nuevoUUID(),plan:k,autor:autorActual(),creada:new Date().toISOString(),tipo:'fuerza',nombre:'',nota:'',bloques:['Calentamiento','Parte principal','Circuito','Vuelta a la calma'].map(n=>({nombre:n,tipo:'fuerza',...(n==='Circuito'?{circuito:true,vueltas:3}:{}),ejercicios:[]}))};
   if(k==='BIB') p.etiquetas=[];CONTENIDO.plantillas=CONTENIDO.plantillas||[];CONTENIDO.plantillas.push(p);guardarContenido();S.np=null;S.plEdit=p.id;S.plTab='sesiones';re();
+  setTimeout(()=>{if(esPersonalK(k)) copiaEnBiblioteca(p);},0);
   setTimeout(()=>{const t=document.getElementById('pl-tit');if(t){t.scrollIntoView({block:'start'});t.focus();}},30);};
  if(g('pl-copiar')) g('pl-copiar').onclick=()=>{S.np={tipo:'fuerza',desde:'bib',bloques:null,nombre:''};S.plEdit=null;re();const x=g('np');if(x) x.scrollIntoView({block:'start'});};
  bindNuevaPl(k,re,abrir);
@@ -5204,7 +5221,7 @@ function bindPlanes(re){
  if(g('pl-vaciar')) g('pl-vaciar').onclick=()=>{CONTENIDO.planes[k]=[];guarda();};
  if(!ed) return;
  bindAdaptaciones(ed,guarda,re);
- const cerrar=()=>{S.plEdit=null;S.plBorrar=false;re();};
+ const cerrar=()=>{if(ed) copiaEnBiblioteca(ed);S.plEdit=null;S.plBorrar=false;re();};
  g('pl-listo').onclick=cerrar;
  bindClasif(ed,re);
  $app.querySelectorAll('[data-plf]').forEach(el=>el.onchange=()=>{const ks=el.dataset.plf.split('.'),last=ks.pop(),o=ks.reduce((a,x)=>a[x],ed),t=el.dataset.plt;let v=el.value;
